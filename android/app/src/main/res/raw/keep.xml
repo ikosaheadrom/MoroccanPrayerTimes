@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep athan audio files during ProGuard/R8 optimization -->
+    <!-- This prevents the build system from removing these resources as "unused" -->
+    <item>@raw/athan</item>
+    <item>@raw/shortathan</item>
+</resources>

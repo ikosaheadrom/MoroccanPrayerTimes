@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Prayer Times</string>
+    <string name="widget_description">Prayer Times Widget - Display 6 prayer times with next prayer highlight</string>
+    <string name="widget_description_horizontal">Prayer Times Widget Horizontal - Display 6 prayer times in horizontal layout</string>
+    <string name="widget_refresh">Refresh Prayer Times</string>
+</resources>
