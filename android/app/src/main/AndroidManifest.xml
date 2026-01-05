@@ -11,7 +11,7 @@
     <uses-permission android:name="com.huawei.android.launcher.permission.CHANGE_BADGE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application
-        android:label="pray_time"
+        android:label="Prayer Times"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
