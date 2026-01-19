@@ -1,0 +1,1120 @@
+{
+  "cities": [
+    {
+      "arabic": "آزرو",
+      "latin": "Azrou",
+      "lat": 33.436117,
+      "lon": -5.221913
+    },
+    {
+      "arabic": "آسفي",
+      "latin": "Safi",
+      "lat": 32.299424,
+      "lon": -9.239533
+    },
+    {
+      "arabic": "آيت ورير",
+      "latin": "Aït Ourir",
+      "lat": 31.563898,
+      "lon": -7.662276
+    },
+    {
+      "arabic": "أحفير",
+      "latin": "Ahfir",
+      "lat": 34.955281,
+      "lon": -2.100793
+    },
+    {
+      "arabic": "أخفنير",
+      "latin": "Akhfennir",
+      "lat": 27.9330925,
+      "lon": -11.963037
+    },
+    {
+      "arabic": "أرفود",
+      "latin": "Erfoud",
+      "lat": 31.434992,
+      "lon": -4.2328293
+    },
+    {
+      "arabic": "أزمور",
+      "latin": "Azemmour",
+      "lat": 33.2749828,
+      "lon": -8.3432522
+    },
+    {
+      "arabic": "أزيلال",
+      "latin": "Azilal",
+      "lat": 31.959295,
+      "lon": -6.570991
+    },
+    {
+      "arabic": "أسا",
+      "latin": "Assa",
+      "lat": 28.611352,
+      "lon": -9.436696
+    },
+    {
+      "arabic": "أسكين",
+      "latin": "Asguine",
+      "lat": 29.7619186,
+      "lon": -9.0069759
+    },
+    {
+      "arabic": "أسول",
+      "latin": "Assoul",
+      "lat": 31.94966,
+      "lon": -5.202998
+    },
+    {
+      "arabic": "أصيلة",
+      "latin": "Asilah",
+      "lat": 35.461928,
+      "lon": -6.036545
+    },
+    {
+      "arabic": "أقا",
+      "latin": "Akka",
+      "lat": 29.391861,
+      "lon": -8.256762
+    },
+    {
+      "arabic": "أكادير",
+      "latin": "Agadir",
+      "lat": 30.4205162,
+      "lon": -9.5838532
+    },
+    {
+      "arabic": "أكدز",
+      "latin": "Agdz",
+      "lat": 30.6943155,
+      "lon": -6.4489453
+    },
+    {
+      "arabic": "أكنول",
+      "latin": "Aknoul",
+      "lat": 34.65602,
+      "lon": -3.865259
+    },
+    {
+      "arabic": "أمسمرير",
+      "latin": "Msemrir",
+      "lat": 31.696245,
+      "lon": -5.8178936
+    },
+    {
+      "arabic": "أمكالة",
+      "latin": "Amgala",
+      "lat": 26.0752014,
+      "lon": -11.7865321
+    },
+    {
+      "arabic": "أوسرد",
+      "latin": "Aousserd",
+      "lat": 22.0724145,
+      "lon": -14.4452432
+    },
+    {
+      "arabic": "أولاد تايمة",
+      "latin": "Oulad Teïma",
+      "lat": 30.3954707,
+      "lon": -9.2105335
+    },
+    {
+      "arabic": "أولاد عياد",
+      "latin": "Oulad Ayad",
+      "lat": 32.2032127,
+      "lon": -6.7988693
+    },
+    {
+      "arabic": "إغرم",
+      "latin": "Igherm",
+      "lat": 30.089004,
+      "lon": -8.460942
+    },
+    {
+      "arabic": "إملشيل",
+      "latin": "Imilchil",
+      "lat": 32.156119,
+      "lon": -5.633585
+    },
+    {
+      "arabic": "إموزار كندر",
+      "latin": "Imouzzer Kandar",
+      "lat": 33.733423,
+      "lon": -5.010495
+    },
+    {
+      "arabic": "إيمنتانوت",
+      "latin": "Imintanoute",
+      "lat": 31.1735007,
+      "lon": -8.8519207
+    },
+    {
+      "arabic": "ابن أحمد",
+      "latin": "Bin Ahmed",
+      "lat": 31.6321115,
+      "lon": -7.9890683
+    },
+    {
+      "arabic": "البروج",
+      "latin": "El Borouj",
+      "lat": 32.504976,
+      "lon": -7.192731
+    },
+    {
+      "arabic": "الجبهة",
+      "latin": "El Jebha",
+      "lat": 35.205755,
+      "lon": -4.666514
+    },
+    {
+      "arabic": "الجديدة",
+      "latin": "El Jadida",
+      "lat": 33.2433309,
+      "lon": -8.49884
+    },
+    {
+      "arabic": "الحاجب",
+      "latin": "El Hajeb",
+      "lat": 33.6987515,
+      "lon": -5.4928593
+    },
+    {
+      "arabic": "الحسيمة",
+      "latin": "Al Hoceima",
+      "lat": 35.245114,
+      "lon": -3.930186
+    },
+    {
+      "arabic": "الخميسات",
+      "latin": "Khemisset",
+      "lat": 33.830287,
+      "lon": -6.072605
+    },
+    {
+      "arabic": "الداخلة",
+      "latin": "Dakhla",
+      "lat": 23.6940663,
+      "lon": -15.9431274
+    },
+    {
+      "arabic": "الدار البيضاء",
+      "latin": "Casablanca",
+      "lat": 33.5945144,
+      "lon": -7.6200284
+    },
+    {
+      "arabic": "الرباط",
+      "latin": "Rabat",
+      "lat": 34.0218454,
+      "lon": -6.8408929
+    },
+    {
+      "arabic": "الرحامنة",
+      "latin": "Rehamna",
+      "lat": 35.0795654,
+      "lon": -6.1540389
+    },
+    {
+      "arabic": "الرشيدية",
+      "latin": "Errachidia",
+      "lat": 31.929089,
+      "lon": -4.4340807
+    },
+    {
+      "arabic": "الرماني",
+      "latin": "Rommani",
+      "lat": 33.528608,
+      "lon": -6.604434
+    },
+    {
+      "arabic": "الريش",
+      "latin": "Errich",
+      "lat": 32.25677,
+      "lon": -4.498189
+    },
+    {
+      "arabic": "الريصاني",
+      "latin": "Rissani",
+      "lat": 31.2618886,
+      "lon": -3.9593135
+    },
+    {
+      "arabic": "الزاك",
+      "latin": "Assa-Zag",
+      "lat": 27.978305,
+      "lon": -9.4935605
+    },
+    {
+      "arabic": "السعيدية",
+      "latin": "Saïdia",
+      "lat": 35.0822208,
+      "lon": -2.2245756
+    },
+    {
+      "arabic": "السمارة",
+      "latin": "Es-Semara",
+      "lat": 26.7435827,
+      "lon": -11.6645492
+    },
+    {
+      "arabic": "الصويرة",
+      "latin": "Essaouira",
+      "lat": 31.5118281,
+      "lon": -9.7620903
+    },
+    {
+      "arabic": "العرائش",
+      "latin": "Larache",
+      "lat": 35.1952327,
+      "lon": -6.152913
+    },
+    {
+      "arabic": "العيون",
+      "latin": "Laâyoune",
+      "lat": 27.154512,
+      "lon": -13.1953921
+    },
+    {
+      "arabic": "العيون الشرقية",
+      "latin": "El Aïoun Sidi Mellouk",
+      "lat": 34.578344,
+      "lon": -2.502961
+    },
+    {
+      "arabic": "الفقيه بنصالح",
+      "latin": "Fquih Ben Salah",
+      "lat": 32.4212148,
+      "lon": -6.7470785
+    },
+    {
+      "arabic": "الفنيدق",
+      "latin": "Fnideq",
+      "lat": 35.8392089,
+      "lon": -5.3614246
+    },
+    {
+      "arabic": "القصر الصغير",
+      "latin": "Ksar Sghir",
+      "lat": 35.8006285,
+      "lon": -5.626159
+    },
+    {
+      "arabic": "القصر الكبير",
+      "latin": "Ksar El Kebir",
+      "lat": 34.999218,
+      "lon": -5.898724
+    },
+    {
+      "arabic": "القصيبة",
+      "latin": "El Ksiba",
+      "lat": 32.568902,
+      "lon": -6.034093
+    },
+    {
+      "arabic": "القنيطرة",
+      "latin": "Kenitra",
+      "lat": 34.26457,
+      "lon": -6.570169
+    },
+    {
+      "arabic": "الكارة",
+      "latin": "El Gara",
+      "lat": 33.277113,
+      "lon": -7.2331554
+    },
+    {
+      "arabic": "الكويرة",
+      "latin": "Lagouira",
+      "lat": 29.2300089,
+      "lon": -10.2283949
+    },
+    {
+      "arabic": "المحبس",
+      "latin": "Al Mahbass",
+      "lat": 27.4137251,
+      "lon": -9.0496748
+    },
+    {
+      "arabic": "المحمدية",
+      "latin": "Mohammedia",
+      "lat": 33.6958383,
+      "lon": -7.3893292
+    },
+    {
+      "arabic": "المضيق",
+      "latin": "M'diq",
+      "lat": 35.6833598,
+      "lon": -5.3232161
+    },
+    {
+      "arabic": "المنزل بني يازغة",
+      "latin": "El Menzel",
+      "lat": 33.83673,
+      "lon": -4.548401
+    },
+    {
+      "arabic": "الناظور",
+      "latin": "Nador",
+      "lat": 35.1739922,
+      "lon": -2.9281198
+    },
+    {
+      "arabic": "النيف",
+      "latin": "Alnif",
+      "lat": 31.116268,
+      "lon": -5.16687
+    },
+    {
+      "arabic": "الوليدية",
+      "latin": "Oualidia",
+      "lat": 32.7314358,
+      "lon": -9.0340271
+    },
+    {
+      "arabic": "اليوسفية",
+      "latin": "Youssoufia",
+      "lat": 32.245801,
+      "lon": -8.532439
+    },
+    {
+      "arabic": "بئر أنزاران",
+      "latin": "Bir Anzarane",
+      "lat": 23.8885639,
+      "lon": -14.5313258
+    },
+    {
+      "arabic": "بئر كندوز",
+      "latin": "Bir Gandouz",
+      "lat": 21.613729,
+      "lon": -16.471069
+    },
+    {
+      "arabic": "باب برد",
+      "latin": "Bab Berred",
+      "lat": 34.998897,
+      "lon": -4.890298
+    },
+    {
+      "arabic": "برشيد",
+      "latin": "Berrechid",
+      "lat": 33.2676746,
+      "lon": -7.5811465
+    },
+    {
+      "arabic": "بركان",
+      "latin": "Berkane",
+      "lat": 34.9266755,
+      "lon": -2.3294087
+    },
+    {
+      "arabic": "بن سليمان",
+      "latin": "Benslimane",
+      "lat": 33.6123896,
+      "lon": -7.1440174
+    },
+    {
+      "arabic": "بنجرير",
+      "latin": "Benguerir",
+      "lat": 32.2327363,
+      "lon": -7.9465013
+    },
+    {
+      "arabic": "بني أنصار",
+      "latin": "Beni Ensar",
+      "lat": 35.259687,
+      "lon": -2.933644
+    },
+    {
+      "arabic": "بني ادرار",
+      "latin": "Beni Drar",
+      "lat": 34.859507,
+      "lon": -1.991664
+    },
+    {
+      "arabic": "بني تجيت",
+      "latin": "Beni Tadjit",
+      "lat": 32.1641768,
+      "lon": -2.8760876
+    },
+    {
+      "arabic": "بني ملال",
+      "latin": "Beni Mellal",
+      "lat": 32.334193,
+      "lon": -6.353335
+    },
+    {
+      "arabic": "بوجدور",
+      "latin": "Boujdour",
+      "lat": 26.1263378,
+      "lon": -14.4836537
+    },
+    {
+      "arabic": "بورد",
+      "latin": "Boured",
+      "lat": 34.7344922,
+      "lon": -4.0946782
+    },
+    {
+      "arabic": "بوزنيقة",
+      "latin": "Bouznika",
+      "lat": 33.781005,
+      "lon": -7.1610294
+    },
+    {
+      "arabic": "بوسكور",
+      "latin": "Bouskour",
+      "lat": 31.4954534,
+      "lon": -7.4874165
+    },
+    {
+      "arabic": "بوعرفة",
+      "latin": "Bouarfa",
+      "lat": 32.532903,
+      "lon": -1.963231
+    },
+    {
+      "arabic": "بوعنان",
+      "latin": "Bouanane",
+      "lat": 32.039244,
+      "lon": -3.04928
+    },
+    {
+      "arabic": "بوكراع",
+      "latin": "Boukraa",
+      "lat": 26.3575997,
+      "lon": -12.8443515
+    },
+    {
+      "arabic": "بولمان",
+      "latin": "Boulemane",
+      "lat": 33.3637958,
+      "lon": -4.729575
+    },
+    {
+      "arabic": "بومالن دادس",
+      "latin": "Boumalne Dades",
+      "lat": 31.372661,
+      "lon": -5.986644
+    },
+    {
+      "arabic": "بويزكارن",
+      "latin": "Bouizakarne",
+      "lat": 29.177425,
+      "lon": -9.711408
+    },
+    {
+      "arabic": "بويكرة",
+      "latin": "Biougra",
+      "lat": 30.215517,
+      "lon": -9.368543
+    },
+    {
+      "arabic": "تارودانت",
+      "latin": "Taroudant",
+      "lat": 30.470651,
+      "lon": -8.877922
+    },
+    {
+      "arabic": "تازارين",
+      "latin": "Tazarine",
+      "lat": 33.9124625,
+      "lon": -4.1251835
+    },
+    {
+      "arabic": "تازة",
+      "latin": "Taza",
+      "lat": 34.230155,
+      "lon": -4.010104
+    },
+    {
+      "arabic": "تافراوت",
+      "latin": "Tafraout",
+      "lat": 29.720472,
+      "lon": -8.9744529
+    },
+    {
+      "arabic": "تافوغالت",
+      "latin": "Tafoughalt",
+      "lat": 34.8055488,
+      "lon": -2.411397
+    },
+    {
+      "arabic": "تالسينت",
+      "latin": "Talsint",
+      "lat": 32.535512,
+      "lon": -3.439467
+    },
+    {
+      "arabic": "تالوين",
+      "latin": "Taliouine",
+      "lat": 30.5314629,
+      "lon": -7.9215207
+    },
+    {
+      "arabic": "تامصلوحت",
+      "latin": "Tamsloht",
+      "lat": 34.0148306,
+      "lon": -6.831479
+    },
+    {
+      "arabic": "تاهلة",
+      "latin": "Tahala",
+      "lat": 34.050634,
+      "lon": -4.4224
+    },
+    {
+      "arabic": "تاوريرت",
+      "latin": "Taourirt",
+      "lat": 34.413438,
+      "lon": -2.893825
+    },
+    {
+      "arabic": "تاونات",
+      "latin": "Taounate",
+      "lat": 34.538476,
+      "lon": -4.635994
+    },
+    {
+      "arabic": "تزنيت",
+      "latin": "Tiznit",
+      "lat": 29.698624,
+      "lon": -9.7312815
+    },
+    {
+      "arabic": "تسلطانت",
+      "latin": "Tasoultante",
+      "lat": 31.5445753,
+      "lon": -7.9821674
+    },
+    {
+      "arabic": "تطوان",
+      "latin": "Tetouan",
+      "lat": 35.570175,
+      "lon": -5.3742776
+    },
+    {
+      "arabic": "تفاريتي",
+      "latin": "Tifariti",
+      "lat": 27.1552743,
+      "lon": -13.2022485
+    },
+    {
+      "arabic": "تمنار",
+      "latin": "Smimou/Tamanar",
+      "lat": 31.2097051,
+      "lon": -9.7036625
+    },
+    {
+      "arabic": "تنجداد",
+      "latin": "Tinejdad",
+      "lat": 31.510201,
+      "lon": -5.03382
+    },
+    {
+      "arabic": "تندرارة",
+      "latin": "Tendrara",
+      "lat": 33.049438,
+      "lon": -2.000089
+    },
+    {
+      "arabic": "تنغير",
+      "latin": "Tinghir",
+      "lat": 31.52133,
+      "lon": -5.531164
+    },
+    {
+      "arabic": "تيزي وسلي",
+      "latin": "Tizi Ousli",
+      "lat": 33.6065582,
+      "lon": -7.5386788
+    },
+    {
+      "arabic": "تيسة",
+      "latin": "Tissa",
+      "lat": 34.28657,
+      "lon": -4.665632
+    },
+    {
+      "arabic": "تيسنت",
+      "latin": "Tissint",
+      "lat": 29.903192,
+      "lon": -7.317869
+    },
+    {
+      "arabic": "تيفلت",
+      "latin": "Tiflet",
+      "lat": 33.894009,
+      "lon": -6.31673
+    },
+    {
+      "arabic": "جرادة",
+      "latin": "Jerada",
+      "lat": 34.310531,
+      "lon": -2.159979
+    },
+    {
+      "arabic": "خريبكة",
+      "latin": "Khouribga",
+      "lat": 32.8856482,
+      "lon": -6.908798
+    },
+    {
+      "arabic": "خميس الزمامرة",
+      "latin": "Zemamra",
+      "lat": 32.6161958,
+      "lon": -8.7043575
+    },
+    {
+      "arabic": "خميس سيدي عبد الجليل",
+      "latin": "Sidi Abdeljalil",
+      "lat": 31.8170507,
+      "lon": -9.2865089
+    },
+    {
+      "arabic": "خنيفرة",
+      "latin": "Khenifra",
+      "lat": 32.9357718,
+      "lon": -5.6696504
+    },
+    {
+      "arabic": "دبدو",
+      "latin": "Debdou",
+      "lat": 33.986368,
+      "lon": -3.039726
+    },
+    {
+      "arabic": "دريوش",
+      "latin": "Driouch",
+      "lat": 34.9728237,
+      "lon": -3.3840192
+    },
+    {
+      "arabic": "دمنات",
+      "latin": "Demnate",
+      "lat": 31.732224,
+      "lon": -7.002676
+    },
+    {
+      "arabic": "رأس الماء",
+      "latin": "Ras El Ma",
+      "lat": 35.1372835,
+      "lon": -2.4227911
+    },
+    {
+      "arabic": "رباط الخير",
+      "latin": "Ribate El Kheir",
+      "lat": 33.8154579,
+      "lon": -4.4068912
+    },
+    {
+      "arabic": "زاكورة",
+      "latin": "Zagora",
+      "lat": 30.3279053,
+      "lon": -5.8369957
+    },
+    {
+      "arabic": "زاوية أحنصال",
+      "latin": "Zaouiat Ahansal",
+      "lat": 31.8456029,
+      "lon": -6.0902502
+    },
+    {
+      "arabic": "زاوية مولاي ابراهيم",
+      "latin": "Moulay Brahim",
+      "lat": 31.2858455,
+      "lon": -7.9654578
+    },
+    {
+      "arabic": "زايو",
+      "latin": "Zaio",
+      "lat": 34.941906,
+      "lon": -2.734164
+    },
+    {
+      "arabic": "زرهون",
+      "latin": "Moulay Idriss Zerhoun",
+      "lat": 34.055188,
+      "lon": -5.525518
+    },
+    {
+      "arabic": "سبتة",
+      "latin": "Ceuta",
+      "lat": 35.8708999,
+      "lon": -5.3546014
+    },
+    {
+      "arabic": "سطات",
+      "latin": "Settat",
+      "lat": 33.002397,
+      "lon": -7.619867
+    },
+    {
+      "arabic": "سلوان",
+      "latin": "Selouane",
+      "lat": 35.07284,
+      "lon": -2.941719
+    },
+    {
+      "arabic": "سوق أربعاء الغرب",
+      "latin": "Souk El Arba",
+      "lat": 34.6765226,
+      "lon": -5.992617
+    },
+    {
+      "arabic": "سيدي إفني",
+      "latin": "Sidi Ifni",
+      "lat": 29.3791253,
+      "lon": -10.1715632
+    },
+    {
+      "arabic": "سيدي بنور",
+      "latin": "Sidi Bennour",
+      "lat": 32.6507792,
+      "lon": -8.4242087
+    },
+    {
+      "arabic": "سيدي سليمان",
+      "latin": "Sidi Slimane",
+      "lat": 34.259878,
+      "lon": -5.927253
+    },
+    {
+      "arabic": "سيدي غانم",
+      "latin": "Sidi Ghanem",
+      "lat": 32.6924281,
+      "lon": -7.9879432
+    },
+    {
+      "arabic": "سيدي قاسم",
+      "latin": "Sidi Kacem",
+      "lat": 34.226412,
+      "lon": -5.711434
+    },
+    {
+      "arabic": "سيدي يحيى الغرب",
+      "latin": "Sidi Yahya El Gharb",
+      "lat": 34.3085169,
+      "lon": -6.2940091
+    },
+    {
+      "arabic": "شفشاون",
+      "latin": "Chefchaouen",
+      "lat": 35.1687748,
+      "lon": -5.2683454
+    },
+    {
+      "arabic": "شيشاوة",
+      "latin": "Chichaoua",
+      "lat": 31.5463197,
+      "lon": -8.7602644
+    },
+    {
+      "arabic": "صفرو",
+      "latin": "Sefrou",
+      "lat": 33.824898,
+      "lon": -4.833336
+    },
+    {
+      "arabic": "طاطا",
+      "latin": "Tata",
+      "lat": 29.746392,
+      "lon": -7.9696051
+    },
+    {
+      "arabic": "طانطان",
+      "latin": "Tan-Tan",
+      "lat": 28.437553,
+      "lon": -11.098664
+    },
+    {
+      "arabic": "طرفاية",
+      "latin": "Tarfaya",
+      "lat": 27.9401204,
+      "lon": -12.9249934
+    },
+    {
+      "arabic": "طنجة",
+      "latin": "Tangier",
+      "lat": 35.7696302,
+      "lon": -5.8033522
+    },
+    {
+      "arabic": "عرباوة",
+      "latin": "Arbaoua",
+      "lat": 34.9134851,
+      "lon": -5.932567
+    },
+    {
+      "arabic": "عين الشعير",
+      "latin": "Aïn Chaïr",
+      "lat": 32.2048015,
+      "lon": -2.5186829
+    },
+    {
+      "arabic": "عين العودة",
+      "latin": "Aïn El Aouda",
+      "lat": 33.803077,
+      "lon": -6.79413
+    },
+    {
+      "arabic": "فاس",
+      "latin": "Fes",
+      "lat": 34.0346534,
+      "lon": -5.0161926
+    },
+    {
+      "arabic": "فرخانة",
+      "latin": "Farkhana",
+      "lat": 35.286107,
+      "lon": -2.980918
+    },
+    {
+      "arabic": "فزوان",
+      "latin": "Fezouane",
+      "lat": 34.9163284,
+      "lon": -2.2040608
+    },
+    {
+      "arabic": "فكيك",
+      "latin": "Figuig",
+      "lat": 32.7263134,
+      "lon": -2.6446272
+    },
+    {
+      "arabic": "فم زكيد",
+      "latin": "Foum Zguid",
+      "lat": 30.085933,
+      "lon": -6.874903
+    },
+    {
+      "arabic": "فم لحصن",
+      "latin": "Foum El Hisn",
+      "lat": 29.013582,
+      "lon": -8.886818
+    },
+    {
+      "arabic": "قرية با محمد",
+      "latin": "Karia Ba Mohamed",
+      "lat": 34.364056,
+      "lon": -5.214573
+    },
+    {
+      "arabic": "قصبة تادلة",
+      "latin": "Kasba Tadla",
+      "lat": 32.602894,
+      "lon": -6.269706
+    },
+    {
+      "arabic": "قصر إيش",
+      "latin": "Ksar Ich",
+      "lat": 32.5141954,
+      "lon": -1.0038119
+    },
+    {
+      "arabic": "قلعة السراغنة",
+      "latin": "El Kelaa des Sraghna",
+      "lat": 32.0538921,
+      "lon": -7.4068642
+    },
+    {
+      "arabic": "قلعة مكونة",
+      "latin": "Kalaat M'Gouna",
+      "lat": 31.237704,
+      "lon": -6.129345
+    },
+    {
+      "arabic": "كتامة",
+      "latin": "Ketama",
+      "lat": 34.8763848,
+      "lon": -4.6195339
+    },
+    {
+      "arabic": "كرس",
+      "latin": "Guers",
+      "lat": 32.2214338,
+      "lon": -4.3502953
+    },
+    {
+      "arabic": "كرسيف",
+      "latin": "Guercif",
+      "lat": 34.225576,
+      "lon": -3.352345
+    },
+    {
+      "arabic": "كلتة زمور",
+      "latin": "Guelta Zemmur",
+      "lat": 25.148848,
+      "lon": -12.369461
+    },
+    {
+      "arabic": "كلميم",
+      "latin": "Guelmim",
+      "lat": 28.9863852,
+      "lon": -10.0574351
+    },
+    {
+      "arabic": "كلميمة",
+      "latin": "Goulmima",
+      "lat": 31.692627,
+      "lon": -4.953262
+    },
+    {
+      "arabic": "لمسيد",
+      "latin": "Lemseid",
+      "lat": 26.5393316,
+      "lon": -13.8368297
+    },
+    {
+      "arabic": "مراكش",
+      "latin": "Marrakech",
+      "lat": 31.6258257,
+      "lon": -7.9891608
+    },
+    {
+      "arabic": "مرتيل",
+      "latin": "Martil",
+      "lat": 35.617441,
+      "lon": -5.274154
+    },
+    {
+      "arabic": "مطماطة",
+      "latin": "Matmata",
+      "lat": 34.0983766,
+      "lon": -4.5508579
+    },
+    {
+      "arabic": "مكناس",
+      "latin": "Meknes",
+      "lat": 33.8984131,
+      "lon": -5.5321582
+    },
+    {
+      "arabic": "مليلية",
+      "latin": "Melilla",
+      "lat": 34.0308548,
+      "lon": -4.995762
+    },
+    {
+      "arabic": "مولاي بوسلهام",
+      "latin": "Moulay Bousselham",
+      "lat": 34.878009,
+      "lon": -6.294076
+    },
+    {
+      "arabic": "مولاي بوعزة",
+      "latin": "Moulay Bouazza",
+      "lat": 33.224507,
+      "lon": -6.197919
+    },
+    {
+      "arabic": "مولاي يعقوب",
+      "latin": "Moulay Yacoub",
+      "lat": 34.087468,
+      "lon": -5.179435
+    },
+    {
+      "arabic": "ميدلت",
+      "latin": "Midelt",
+      "lat": 32.680347,
+      "lon": -4.739897
+    },
+    {
+      "arabic": "ميسور",
+      "latin": "Missour",
+      "lat": 33.047057,
+      "lon": -3.992578
+    },
+    {
+      "arabic": "هسكورة",
+      "latin": "Skoura",
+      "lat": 31.060412,
+      "lon": -6.55755
+    },
+    {
+      "arabic": "واد أمليل",
+      "latin": "Oued Amlil",
+      "lat": 34.191562,
+      "lon": -4.267604
+    },
+    {
+      "arabic": "واد لاو",
+      "latin": "Oued Laou",
+      "lat": 35.450492,
+      "lon": -5.093029
+    },
+    {
+      "arabic": "وادي زم",
+      "latin": "Oued Zem",
+      "lat": 32.862504,
+      "lon": -6.571054
+    },
+    {
+      "arabic": "والماس",
+      "latin": "Oulmes",
+      "lat": 33.425509,
+      "lon": -6.004488
+    },
+    {
+      "arabic": "وجدة",
+      "latin": "Oujda",
+      "lat": 34.677874,
+      "lon": -1.929306
+    },
+    {
+      "arabic": "ورزازات",
+      "latin": "Ouarzazate",
+      "lat": 30.920193,
+      "lon": -6.910923
+    },
+    {
+      "arabic": "وزان",
+      "latin": "Ouezzane",
+      "lat": 34.796757,
+      "lon": -5.578493
+    },
+    {
+      "arabic": "يفرن",
+      "latin": "Ifrane",
+      "lat": 33.527605,
+      "lon": -5.107408
+    },
+    {
+      "arabic": "آيت القاق",
+      "latin": "Aït El Kag",
+      "lat": 31.205750,
+      "lon": -7.859278
+    },
+    {
+      "arabic": "أكدال أملشيل",
+      "latin": "Agoudal Amilchil",
+      "lat": 32.011889,
+      "lon": -5.490389
+    },
+    {
+      "arabic": "اكودال املشيل ميدلت",
+      "latin": "Agoudal Amilchil Midelt",
+      "lat": 32.154694,
+      "lon": -5.630417
+    },
+    {
+      "arabic": "تنديت",
+      "latin": "Tendit",
+      "lat": 33.676056,
+      "lon": -3.618361
+    },
+    {
+      "arabic": "تولكولت",
+      "latin": "Toulkoult",
+      "lat": 31.215194,
+      "lon": -9.107444
+    },
+    {
+      "arabic": "قطارة",
+      "latin": "Ghattara",
+      "lat": 31.867944,
+      "lon": -8.183139
+    }
+  ]
+}

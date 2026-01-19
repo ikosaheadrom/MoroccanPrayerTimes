@@ -84,7 +84,7 @@ class ResponsiveSizes {
   double get gregorianMonthSize => fontSize(3.2);
 
   /// Weekday font size
-  double get weekdaySize => fontSize(5.5);
+  double get weekdaySize => fontSize(5.2);
 
   /// Prayer cell name font size (calendar grid)
   double get cellNameSize => fontSize(3.5);
@@ -95,7 +95,7 @@ class ResponsiveSizes {
   // ============= Settings Screen =============
 
   /// Settings section header font size
-  double get settingHeaderSize => fontSize(4.5);
+  double get settingHeaderSize => fontSize(4.4);
 
   /// Settings item label font size
   double get settingLabelSize => fontSize(4.2);

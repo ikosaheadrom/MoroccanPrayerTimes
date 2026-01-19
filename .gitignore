@@ -33,6 +33,7 @@ migrate_working_dir/
 .pub/
 /build/
 /pray_time-oldcode/
+/.vscode/
 
 # Symbolication related
 app.*.symbols

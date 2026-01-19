@@ -282,59 +282,6 @@ Future<void> _handleDailyPrayerRefresh() async {
       } catch (e) {
         debugPrint('[BackgroundTasks] ⚠ Failed to cancel old notifications: $e');
       }
-      
-      // Show silent notification with the prayer times (if enabled via devtools)
-      final showDailyRefreshNotification = prefs.getBool('devShowDailyRefreshNotification') ?? false;
-      if (showDailyRefreshNotification) {
-        try {
-          final plugin = FlutterLocalNotificationsPlugin();
-          
-          // Initialize if needed (for background context)
-          await plugin.initialize(
-            const InitializationSettings(
-              android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-              iOS: DarwinInitializationSettings(),
-            ),
-            onDidReceiveNotificationResponse: null,
-          );
-          
-          final notificationBody = 'Source: $sourceUsed\n'
-              'Fajr: ${dailyTimes['fajr']}\n'
-              'Sunrise: ${dailyTimes['sunrise']}\n'
-              'Dhuhr: ${dailyTimes['dhuhr']}\n'
-              'Asr: ${dailyTimes['asr']}\n'
-              'Maghrib: ${dailyTimes['maghrib']}\n'
-              'Isha: ${dailyTimes['isha']}';
-          
-          await plugin.show(
-            999, // Unique ID for this notification
-            '🕌 Prayer Times Updated',
-            notificationBody,
-            NotificationDetails(
-              android: AndroidNotificationDetails(
-                'pray_times_channel_silent',
-                'Prayer Times',
-                channelDescription: 'Silent notification for prayer times',
-                importance: Importance.low,
-                priority: Priority.low,
-                silent: true,
-                playSound: false,
-                enableVibration: false,
-              ),
-              iOS: const DarwinNotificationDetails(
-                presentAlert: false,
-                presentBadge: false,
-                presentSound: false,
-              ),
-            ),
-          );
-          debugPrint('[BackgroundTasks] ✓ Sent notification with prayer times');
-        } catch (e) {
-          debugPrint('[BackgroundTasks] Could not send notification: $e');
-        }
-      } else {
-        debugPrint('[BackgroundTasks] Daily refresh notification disabled via devtools');
-      }
     } else {
       debugPrint('[BackgroundTasks] Daily times returned invalid data (N/A values or empty)');
       debugPrint('[BackgroundTasks] Times received: $dailyTimes');
@@ -397,6 +344,18 @@ Future<void> _handleMonthlyCalendarRefresh() async {
           debugPrint('[BackgroundTasks] ⚠ Cache has NOT expired yet');
           debugPrint('[BackgroundTasks] Status: SKIPPING monthly refresh (will retry tomorrow)');
           debugPrint('[BackgroundTasks] ═══════════════════════════════');
+          
+          // Send skip notification (if enabled via devtools)
+          final showMonthlyRefreshNotification = prefs.getBool('devShowMonthlyRefreshNotification') ?? false;
+          if (showMonthlyRefreshNotification) {
+            final daysUntilExpiration = expirationDate.difference(now).inDays;
+            await _sendMonthlyRefreshNotification(
+              monthNameLatin: 'Cache Valid',
+              result: 'skipped',
+              message: 'Cache not expired yet (expires in $daysUntilExpiration days)',
+            );
+          }
+          
           return; // Don't execute, try again tomorrow
         }
         debugPrint('[BackgroundTasks] ✓ Cache HAS expired - proceeding with refresh');
@@ -599,10 +558,14 @@ Future<void> _handleMonthlyCalendarRefresh() async {
     
     // SEND NOTIFICATION (if enabled via devtools)
     final showMonthlyRefreshNotification = prefs.getBool('devShowMonthlyRefreshNotification') ?? false;
-    if (monthNameLatin.isNotEmpty && showMonthlyRefreshNotification) {
-      await _sendMonthlyRefreshNotification(monthNameLatin);
+    if (showMonthlyRefreshNotification) {
+      await _sendMonthlyRefreshNotification(
+        monthNameLatin: monthNameLatin,
+        result: 'success',
+        message: 'Fetched $monthNameLatin calendar',
+      );
       debugPrint('[BackgroundTasks] ✓ Notification shown successfully');
-    } else if (!showMonthlyRefreshNotification) {
+    } else {
       debugPrint('[BackgroundTasks] Monthly refresh notification disabled via devtools');
     }
     
@@ -612,16 +575,34 @@ Future<void> _handleMonthlyCalendarRefresh() async {
     debugPrint('[BackgroundTasks] ✗ Error in monthly refresh: $e');
     debugPrint('[BackgroundTasks] Stack: $st');
     
-    // Clear cache on error so app knows to retry
+    // Send error notification (if enabled via devtools)
     final prefs = await SharedPreferences.getInstance();
+    final showMonthlyRefreshNotification = prefs.getBool('devShowMonthlyRefreshNotification') ?? false;
+    if (showMonthlyRefreshNotification) {
+      await _sendMonthlyRefreshNotification(
+        monthNameLatin: 'Error',
+        result: 'failed',
+        message: 'Monthly refresh failed: $e',
+      );
+    }
+    
+    // Clear cache on error so app knows to retry
     final cityId = prefs.getString('cityCityId') ?? '58';
     await prefs.remove('calendarData_$cityId');
     await prefs.setBool('needsMonthlyRefresh', true);
   }
 }
 
-/// Send silent notification for monthly calendar refresh completion
-Future<void> _sendMonthlyRefreshNotification(String monthNameLatin) async {
+/// Send notification for monthly calendar refresh with detailed result status
+/// Parameters:
+/// - monthNameLatin: The Islamic month name (Muharram, Safar, etc.)
+/// - result: 'success', 'skipped', or 'failed'
+/// - message: Detailed message about what happened
+Future<void> _sendMonthlyRefreshNotification({
+  required String monthNameLatin,
+  required String result,
+  required String message,
+}) async {
   try {
     final plugin = FlutterLocalNotificationsPlugin();
     
@@ -629,19 +610,24 @@ Future<void> _sendMonthlyRefreshNotification(String monthNameLatin) async {
     // Initialize if needed (for background context)
     await plugin.initialize(
       const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('ic_notification'),
         iOS: DarwinInitializationSettings(),
       ),
       onDidReceiveNotificationResponse: null,
     );
     debugPrint('[BackgroundTasks] Notification plugin initialized');
     
-    // Send silent notification (no sound, no vibration)
-    debugPrint('[BackgroundTasks] Showing notification for: $monthNameLatin');
+    // Build title based on result
+    final title = _getNotificationTitle(result);
+    
+    // Build body with result details
+    final body = '$message\nStatus: ${result.toUpperCase()}';
+    
+    debugPrint('[BackgroundTasks] Showing notification - Title: $title, Body: $body');
     await plugin.show(
       999, // Notification ID for monthly refresh
-      'Calendar Updated',
-      'Fetched $monthNameLatin calendar',
+      title,
+      body,
       NotificationDetails(
         android: AndroidNotificationDetails(
           'silent_channel',
@@ -649,10 +635,11 @@ Future<void> _sendMonthlyRefreshNotification(String monthNameLatin) async {
           channelDescription: 'Silent notifications for background updates',
           importance: Importance.min,
           priority: Priority.min,
+          icon: 'ic_notification',
           silent: true,
           playSound: false,
           enableVibration: false,
-          showWhen: false,
+          showWhen: true,
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: false,
@@ -664,6 +651,20 @@ Future<void> _sendMonthlyRefreshNotification(String monthNameLatin) async {
     debugPrint('[BackgroundTasks] Notification shown successfully');
   } catch (e) {
     debugPrint('[BackgroundTasks] Error sending notification: $e');
+  }
+}
+
+/// Get notification title based on result status
+String _getNotificationTitle(String result) {
+  switch (result.toLowerCase()) {
+    case 'success':
+      return '✓ Calendar Updated';
+    case 'skipped':
+      return '⏭ Calendar Skipped';
+    case 'failed':
+      return '✗ Calendar Update Failed';
+    default:
+      return 'Calendar Status';
   }
 }
 
@@ -867,7 +868,6 @@ Future<void> _handlePrayerTimeAlarm(String taskName) async {
     
     // Show optional notification for this prayer time
     try {
-      await _showPrayerTimeNotification(prayerName);
       debugPrint('[BackgroundTasks:PrayerAlarm] ✓ Prayer time notification shown for $prayerName');
     } catch (e) {
       debugPrint('[BackgroundTasks:PrayerAlarm] ⚠ Failed to show notification: $e');
@@ -953,49 +953,9 @@ tz.Location _getDeviceTimezone() {
   }
 }
 
-/// Get human-readable prayer label
-/// DEPRECATED: No longer used - NotificationManager handles this
-@Deprecated('No longer used')
-String _getPrayerLabel(String prayerName) {
-  switch (prayerName.toLowerCase()) {
-    case 'fajr':
-      return 'Fajr';
-    case 'sunrise':
-      return 'Sunrise';
-    case 'dhuhr':
-      return 'Dhuhr';
-    case 'asr':
-      return 'Asr';
-    case 'maghrib':
-      return 'Maghrib';
-    case 'isha':
-      return 'Isha';
-    default:
-      return prayerName;
-  }
-}
 
-/// Get notification ID for prayer (ensures uniqueness)
-/// DEPRECATED: No longer used - NotificationManager handles this
-@Deprecated('No longer used')
-int _getPrayerNotificationId(String prayerName) {
-  switch (prayerName.toLowerCase()) {
-    case 'fajr':
-      return 1001;
-    case 'sunrise':
-      return 1002;
-    case 'dhuhr':
-      return 1003;
-    case 'asr':
-      return 1004;
-    case 'maghrib':
-      return 1005;
-    case 'isha':
-      return 1006;
-    default:
-      return 1099;
-  }
-}
+
+
 
 /// TEST FUNCTION: Manually trigger monthly calendar refresh to test logic
 /// Call this from UI or test code to simulate a monthly refresh cycle

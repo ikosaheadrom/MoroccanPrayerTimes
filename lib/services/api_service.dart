@@ -92,7 +92,7 @@ class ApiService {
           debugPrint('[fetchMoroccoAlAdhanTimes]   Isha: ${timings['Isha']}');
           
           // Extract prayer times and format them (remove timezone info if present)
-          String _extractTime(String? timeStr) {
+          String extractTime(String? timeStr) {
             if (timeStr == null || timeStr.isEmpty) return '00:00';
             // API may return times like "07:00 +01" or just "07:00"
             if (timeStr.contains(' ')) {
@@ -103,12 +103,12 @@ class ApiService {
           
           client.close();
           return PrayerTimes(
-            fajr: _extractTime(timings['Fajr'] as String?),
-            sunrise: _extractTime(timings['Sunrise'] as String?),
-            dhuhr: _extractTime(timings['Dhuhr'] as String?),
-            asr: _extractTime(timings['Asr'] as String?),
-            maghrib: _extractTime(timings['Maghrib'] as String?),
-            isha: _extractTime(timings['Isha'] as String?),
+            fajr: extractTime(timings['Fajr'] as String?),
+            sunrise: extractTime(timings['Sunrise'] as String?),
+            dhuhr: extractTime(timings['Dhuhr'] as String?),
+            asr: extractTime(timings['Asr'] as String?),
+            maghrib: extractTime(timings['Maghrib'] as String?),
+            isha: extractTime(timings['Isha'] as String?),
           );
         } else {
           client.close();

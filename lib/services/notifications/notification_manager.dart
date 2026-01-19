@@ -22,6 +22,8 @@ class NotificationManager {
     required AthanSoundType athanSoundType,
     required tz.Location timezone,
     bool dryRun = false,
+    bool enableCountdownTimer = false,
+    bool prayerNotificationsEnabled = true,
   }) async {
     int totalScheduled = 0;
 
@@ -30,7 +32,9 @@ class NotificationManager {
       debugPrint('$_debugTag Scheduling notifications:');
       debugPrint('$_debugTag   Global State: ${notificationState.label}');
       debugPrint('$_debugTag   Athan Type: ${athanSoundType.label}');
+      debugPrint('$_debugTag   Prayer Notifications Enabled: $prayerNotificationsEnabled');
       debugPrint('$_debugTag   Reminder Enabled: $reminderEnabled ($reminderMinutes min before)');
+      debugPrint('$_debugTag   Countdown Timer Enabled: $enableCountdownTimer');
       debugPrint('$_debugTag   Dry Run: $dryRun');
       debugPrint('$_debugTag ═══════════════════════════════════════════');
 
@@ -65,54 +69,59 @@ class NotificationManager {
         'Isha': prayerTimes['isha'],
       };
 
-      for (final entry in prayers.entries) {
-        final prayerName = entry.key;
-        final timeStr = entry.value;
+      if (prayerNotificationsEnabled) {
+        for (final entry in prayers.entries) {
+          final prayerName = entry.key;
+          final timeStr = entry.value;
 
-        if (timeStr == null || timeStr == 'N/A') {
-          debugPrint('$_debugTag Skipping $prayerName - N/A time');
-          continue;
-        }
-
-        // Determine notification state for this prayer
-        late NotificationState prayerNotificationState;
-        if (useAdvancedNotificationControl) {
-          // Use per-prayer state if advanced control is enabled
-          final stateValue = prayerStatesMap[prayerName] as int? ?? 2;
-          prayerNotificationState = NotificationState.fromValue(stateValue);
-        } else {
-          // Use global state
-          prayerNotificationState = notificationState;
-        }
-
-        // Skip if prayer notification is disabled (-1)
-        if (prayerNotificationState == NotificationState.off) {
-          debugPrint('$_debugTag Skipping $prayerName athan - disabled');
-          continue;
-        }
-
-        try {
-          final parts = timeStr.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
-          final hour = int.tryParse(parts[0]) ?? 0;
-          final minute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
-          final scheduledTime = tz.TZDateTime(timezone, now.year, now.month, now.day, hour, minute, 0);
-
-          if (scheduledTime.isBefore(now)) {
-            debugPrint('$_debugTag Skipping $prayerName - already passed');
+          if (timeStr == null || timeStr == 'N/A') {
+            debugPrint('$_debugTag Skipping $prayerName - N/A time');
             continue;
           }
 
-          await PrayerNotificationScheduler.schedulePrayerNotification(
-            plugin: _plugin,
-            prayerName: prayerName,
-            scheduledTime: scheduledTime,
-            notificationState: prayerNotificationState,
-            athanSoundType: athanSoundType,
-          );
-          totalScheduled++;
-        } catch (e) {
-          debugPrint('$_debugTag Error scheduling $prayerName: $e');
+          // Determine notification state for this prayer
+          late NotificationState prayerNotificationState;
+          if (useAdvancedNotificationControl) {
+            // Use per-prayer state if advanced control is enabled
+            final stateValue = prayerStatesMap[prayerName] as int? ?? 2;
+            prayerNotificationState = NotificationState.fromValue(stateValue);
+          } else {
+            // Use global state
+            prayerNotificationState = notificationState;
+          }
+
+          // Skip if prayer notification is disabled (-1)
+          if (prayerNotificationState == NotificationState.off) {
+            debugPrint('$_debugTag Skipping $prayerName athan - disabled');
+            continue;
+          }
+
+          try {
+            final parts = timeStr.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+            final hour = int.tryParse(parts[0]) ?? 0;
+            final minute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+            final scheduledTime = tz.TZDateTime(timezone, now.year, now.month, now.day, hour, minute, 0);
+
+            if (scheduledTime.isBefore(now)) {
+              debugPrint('$_debugTag Skipping $prayerName - already passed');
+              continue;
+            }
+
+            await PrayerNotificationScheduler.schedulePrayerNotification(
+              plugin: _plugin,
+              prayerName: prayerName,
+              scheduledTime: scheduledTime,
+              notificationState: prayerNotificationState,
+              athanSoundType: athanSoundType,
+              allPrayerTimes: prayerTimes,
+            );
+            totalScheduled++;
+          } catch (e) {
+            debugPrint('$_debugTag Error scheduling $prayerName: $e');
+          }
         }
+      } else {
+        debugPrint('$_debugTag Prayer notifications globally disabled - skipping all prayer notification scheduling');
       }
 
       debugPrint('$_debugTag Scheduled $totalScheduled prayer notifications');
@@ -127,6 +136,7 @@ class NotificationManager {
           timezone: timezone,
           useAdvancedControl: useAdvancedNotificationControl,
           reminderStatesMap: reminderStatesMap,
+          enableCountdownTimer: enableCountdownTimer,
         );
         totalScheduled += reminderCount;
         debugPrint('$_debugTag Scheduled $reminderCount reminder notifications');

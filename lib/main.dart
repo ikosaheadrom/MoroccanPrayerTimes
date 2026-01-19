@@ -15,12 +15,18 @@ import 'services/offline_adhan.dart';
 import 'services/background_tasks.dart' as bg_tasks;
 import 'services/prayer_times_parser.dart';
 import 'services/prayer_times_provider.dart';
-import 'services/translation_transliteration.dart';
+import 'services/translation_transliteration.dart' as translations_lib;
 import 'services/daily_prayer_parser.dart';
 import 'services/notifications/notifications.dart';
+import 'services/location_service.dart';
+import 'services/city_lookup_service.dart';
+import 'package:geolocator/geolocator.dart';
 import 'widgets/widget_info_manager.dart';
 import 'widgets/widget_cache_updater.dart';
 import 'utils/responsive_sizes.dart';
+import 'utils/app_colors_streamlined.dart';
+import 'pages/prayer_screen_ui.dart';
+import 'pages/calendar_screen_ui.dart';
 
 // Global theme notifier to allow live theme changes from Settings
 /// logic as prayer/reminder scheduling so behavior matches production paths.
@@ -78,6 +84,7 @@ Future<void> _scheduleTestNotificationScheduled(int secondsFromNow) async {
           channelDescription: 'Notifications for prayer times',
           importance: Importance.max,
           priority: Priority.max,
+          icon: 'ic_notification',
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.alarmClock,
@@ -103,6 +110,7 @@ Future<void> _scheduleTestNotificationScheduled(int secondsFromNow) async {
             channelDescription: 'Notifications for prayer times',
             importance: Importance.high,
             priority: Priority.high,
+            icon: 'ic_notification',
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -335,6 +343,7 @@ Future<void> _troubleshootZonedSchedule() async {
             channelDescription: 'Notifications for prayer times',
             importance: Importance.max,
             priority: Priority.max,
+            icon: 'ic_notification',
             enableVibration: enableVibration,
             playSound: true,
             enableLights: true,
@@ -383,6 +392,7 @@ Future<void> _troubleshootZonedSchedule() async {
             channelDescription: 'Notifications for prayer times',
             importance: Importance.max,
             priority: Priority.max,
+            icon: 'ic_notification',
             enableVibration: enableVibration,
             playSound: true,
             enableLights: true,
@@ -430,6 +440,7 @@ Future<void> _troubleshootZonedSchedule() async {
               channelDescription: 'Notifications for prayer times',
               importance: Importance.max,
               priority: Priority.max,
+              icon: 'ic_notification',
               enableVibration: enableVibration,
               playSound: true,
               enableLights: true,
@@ -482,6 +493,7 @@ Future<void> _troubleshootZonedSchedule() async {
             channelDescription: 'Notifications for prayer times',
             importance: Importance.max,
             priority: Priority.max,
+            icon: 'ic_notification',
             enableVibration: enableVibration,
             playSound: true,
             enableLights: true,
@@ -1192,6 +1204,7 @@ Future<void> _testAthanNotificationWithFullState() async {
             channelDescription: 'Test athan notification',
             importance: Importance.max,
             priority: Priority.max,
+            icon: 'ic_notification',
             enableLights: true,
             color: Colors.green,
           ),
@@ -1290,6 +1303,50 @@ void _oldCallbackDispatcher() {
     debugPrint('[BackgroundTask] Running prayer times refresh task: $task');
     return await performBackgroundRefresh();
   });
+}
+
+/// Helper function to get next prayer/event and time until it
+/// Returns format: "Sunrise is in 2h 15m" or "Isha is in 1h 30m"
+String _getNextPrayerMessage(String currentPrayer, Map<String, String> allPrayerTimes) {
+  const prayerOrder = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+  
+  // Find index of current prayer
+  final currentIndex = prayerOrder.indexOf(currentPrayer);
+  if (currentIndex == -1 || currentIndex >= prayerOrder.length - 1) {
+    return '$currentPrayer has begun';
+  }
+  
+  // Get next prayer in order
+  final nextPrayer = prayerOrder[currentIndex + 1];
+  final nextTimeStr = allPrayerTimes[nextPrayer] ?? 'N/A';
+  
+  if (nextTimeStr == 'N/A' || nextTimeStr.isEmpty) {
+    return '$currentPrayer has begun';
+  }
+  
+  // Parse next prayer time
+  final parts = nextTimeStr.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+  final nextHour = int.tryParse(parts[0]) ?? 0;
+  final nextMinute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+  
+  final now = DateTime.now();
+  final nextTime = DateTime(now.year, now.month, now.day, nextHour, nextMinute);
+  
+  // Calculate time difference
+  final difference = nextTime.difference(now);
+  final hours = difference.inHours;
+  final minutes = difference.inMinutes % 60;
+  
+  // Format message
+  if (hours > 0) {
+    if (minutes > 0) {
+      return '$nextPrayer is in ${hours}h ${minutes}m';
+    } else {
+      return '$nextPrayer is in ${hours}h';
+    }
+  } else {
+    return '$nextPrayer is in ${minutes}m';
+  }
 }
 
 /// Performs the background refresh logic (fetch, cache, reschedule).
@@ -1424,10 +1481,11 @@ Future<bool> performBackgroundRefresh() async {
           final scheduledTzTime = tz.TZDateTime.from(scheduledTime, location);
           if (prayerNotificationsEnabled) {
             try {
+              final notificationBody = _getNextPrayerMessage(prayerName, prayerMap);
               await flutterLocalNotificationsPlugin.zonedSchedule(
                 prayerName.hashCode,
-                'Time for $prayerName Prayer',
-                'It is now time for $prayerName prayer',
+                'Time for $prayerName',
+                notificationBody,
                 scheduledTzTime,
                 NotificationDetails(
                   android: AndroidNotificationDetails(
@@ -1436,6 +1494,7 @@ Future<bool> performBackgroundRefresh() async {
                     channelDescription: 'Notifications for prayer times',
                     importance: Importance.defaultImportance,
                     priority: Priority.defaultPriority,
+                    icon: 'ic_notification',
                     enableVibration: enableVibration,
                     styleInformation: const BigTextStyleInformation(''),
                   ),
@@ -1460,10 +1519,11 @@ Future<bool> performBackgroundRefresh() async {
               }
             } catch (e) {
               debugPrint('[BackgroundTask] alarmClock failed for $prayerName, trying inexactAllowWhileIdle: $e');
+              final notificationBody = _getNextPrayerMessage(prayerName, prayerMap);
               await flutterLocalNotificationsPlugin.zonedSchedule(
                 prayerName.hashCode,
                 'Time for $prayerName Prayer',
-                'It is now time for $prayerName prayer',
+                notificationBody,
                 scheduledTzTime,
                 NotificationDetails(
                   android: AndroidNotificationDetails(
@@ -1472,6 +1532,7 @@ Future<bool> performBackgroundRefresh() async {
                     channelDescription: 'Notifications for prayer times',
                     importance: Importance.defaultImportance,
                     priority: Priority.defaultPriority,
+                    icon: 'ic_notification',
                     enableVibration: enableVibration,
                     styleInformation: const BigTextStyleInformation(''),
                   ),
@@ -1515,6 +1576,7 @@ Future<bool> performBackgroundRefresh() async {
                     channelDescription: 'Notifications for prayer times',
                     importance: Importance.defaultImportance,
                     priority: Priority.defaultPriority,
+                    icon: 'ic_notification',
                     enableVibration: enableVibration,
                     styleInformation: const BigTextStyleInformation(''),
                   ),
@@ -1656,6 +1718,8 @@ Future<void> refreshScheduledNotificationsGlobal() async {
     final athanSoundType = AthanSoundType.fromValue(athanSoundTypeValue);
     final reminderEnabled = prefs.getBool('reminderEnabled') ?? false;
     final reminderMinutes = prefs.getInt('reminderMinutes') ?? 10;
+    final enableCountdownTimer = prefs.getBool('enableCountdownTimer') ?? false;
+    final prayerNotificationsEnabled = prefs.getBool('prayerNotificationsEnabled') ?? true;
     
     final manager = NotificationManager();
     final timezone = getDeviceTimezone();
@@ -1673,6 +1737,8 @@ Future<void> refreshScheduledNotificationsGlobal() async {
       notificationState: notificationState,
       athanSoundType: athanSoundType,
       timezone: timezone,
+      enableCountdownTimer: enableCountdownTimer,
+      prayerNotificationsEnabled: prayerNotificationsEnabled,
     );
     
     debugPrint('[RefreshGlobal] ═════ RESCHEDULE COMPLETE ═════');
@@ -1710,6 +1776,7 @@ Future<void> _showTestNotificationStatic() async {
       channelDescription: 'Notifications for prayer times',
       importance: Importance.defaultImportance,
       priority: Priority.defaultPriority,
+      icon: 'ic_notification',
       styleInformation: const BigTextStyleInformation(''),
       // Explicitly control sound and vibration for this notification
       playSound: notificationState == NotificationState.full,
@@ -2351,6 +2418,30 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
   bool _reloadFailed = false; // Prevent infinite retry loops
   DateTime? _lastReloadAttemptDate; // Track which day we last tried to reload
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // PUBLIC GETTERS - For accessing private state from other classes (like PrayerScreenUI)
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+  PrayerTimes? get todayTimes => _todayTimes;
+  String get currentCity => _currentCity;
+  bool get useMinistry => _useMinistry;
+  bool get isOfflineMode => _isOfflineMode;
+  String get nextPrayerName => _nextPrayerName;
+  DateTime? get nextPrayerTime => _nextPrayerTime;
+  String get countdownDisplay => _countdownDisplay;
+  ApiService get apiService => _apiService;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PUBLIC WRAPPER METHODS - For calling private methods from other classes
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  Future<void> loadTimes() => _loadTimes();
+  Future<void> loadSettings() => _loadSettings();
+  Future<void> maybeRefreshCalendar() => _maybeRefreshCalendar();
+  String latinizeCity(String arabicName) => _latinizeCity(arabicName);
+
 // Track if this is the first load to avoid startup notification
 
 
@@ -2834,11 +2925,14 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
 
     if (remaining.isNegative) {
       if (mounted) {
+        // Prayer time reached - kill the reminder notification
+        // Calculate the reminder time (prayer time - X minutes) to get the correct ID
+        _cancelReminderNotification();
+        
         // Time passed, refresh the prayer times and recalculate the next prayer.
         setState(() {
           _countdownDisplay = '00:00:00';
         });
-        // Only reload if we haven't already tried for this specific date or if enough time has passed
         _smartReloadForNextPrayer();
       }
       return;
@@ -2857,185 +2951,35 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
     }
   }
 
+  /// Cancel the reminder notification for the current prayer
+  Future<void> _cancelReminderNotification() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final reminderMinutes = prefs.getInt('reminderMinutes') ?? 10;
+      
+      // Calculate the reminder time (prayer time - X minutes)
+      final reminderTime = _nextPrayerTime!.subtract(Duration(minutes: reminderMinutes));
+      
+      // Recreate the reminder ID using the same logic as the scheduler
+      final reminderId = ('${_nextPrayerName}_reminder_${reminderTime.day}${reminderTime.month}').hashCode;
+      
+      debugPrint('[Countdown] Prayer time reached - cancelling reminder notification');
+      debugPrint('[Countdown] Prayer: $_nextPrayerName, Prayer time: $_nextPrayerTime, Reminder time: $reminderTime');
+      debugPrint('[Countdown] Reminder ID: $reminderId');
+      
+      await flutterLocalNotificationsPlugin.cancel(reminderId);
+      debugPrint('[Countdown] ✓ Reminder notification cancelled');
+    } catch (e) {
+      debugPrint('[Countdown] ✗ Error cancelling reminder notification: $e');
+    }
+  }
+
   // Build aesthetic date display with day-of-week emphasized on the right
-  Widget _buildDateDisplay(ResponsiveSizes responsive) {
-    final now = DateTime.now();
-    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                    'July', 'August', 'September', 'October', 'November', 'December'];
-    
-    final dayName = weekdays[now.weekday - 1];
-    final monthName = months[now.month - 1];
-    final dateStr = '${now.day} $monthName ${now.year}';
-    
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: responsive.horizontalPadding,
-        vertical: responsive.verticalPadding,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Left: day of week (Parent rank - bold)
-          Text(
-            dayName,
-            style: TextStyle(
-              fontSize: responsive.headingSize,
-              fontWeight: FontWeight.w400,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
-              letterSpacing: 0.3,
-            ),
-          ),
-          // Right: date (Hint rank - secondary)
-          Text(
-            dateStr,
-            style: TextStyle(
-              fontSize: responsive.bodySize,
-              fontWeight: FontWeight.normal,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountdownTimer(ResponsiveSizes responsive) {
-    final scheme = Theme.of(context).colorScheme;
-    
-    return Container(
-      margin: EdgeInsets.only(
-        top: responsive.spacingS,
-        bottom: responsive.spacingM,
-      ),
-      padding: EdgeInsets.all(responsive.spacingM),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(responsive.borderRadiusStandard),
-        border: Border.all(
-          color: scheme.primary,
-          width: 2,
-        ),
-      ),
-      child: Column(
-        children: [
-          // Parent rank title
-          Text(
-            'Countdown to $_nextPrayerName',
-            style: TextStyle(
-              fontSize: responsive.titleSize,
-              fontWeight: FontWeight.w600,
-              color: scheme.primary.withValues(alpha: 0.9),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: responsive.spacingM),
-          // Child rank: Timer display
-          Container(
-            padding: EdgeInsets.symmetric(
-              vertical: responsive.spacingS,
-              horizontal: responsive.spacingM,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.center,
-                child: Text(
-                  _countdownDisplay,
-                  style: TextStyle(
-                    fontSize: responsive.timerSize,
-                    fontWeight: FontWeight.w900,
-                    color: scheme.primary,
-                    fontFamily: 'monospace',
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: responsive.spacingS),
-          // Hint rank: Prayer time
-          if (_nextPrayerTime != null)
-            Text(
-              'Time: ${TimeOfDay.fromDateTime(_nextPrayerTime!).format(context)}',
-              style: TextStyle(
-                fontSize: responsive.bodySize,
-                color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
   // ----------------------------------------------------
   // ----------------------------------------------------
 
 
-  AppBar _buildAppBar() {
-    // Reload settings to get the latest useMinistry value when the AppBar is rebuilt
-    _loadSettings();
-    
-    final responsive = ResponsiveSizes(context);
-    
-    return AppBar(
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      foregroundColor: Theme.of(context).colorScheme.primary,
-      title: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Prayer Times',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              fontSize: responsive.titleSize,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          Text(
-            _latinizeCity(_currentCity),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w400,
-              fontSize: responsive.bodySize,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
-            ),
-          ),
-        ],
-      ),
-      elevation: 4,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.calendar_today),
-          tooltip: 'Calendar',
-            onPressed: _useMinistry ? () async {
-              // Ensure calendar cache is populated before opening calendar screen
-              await _maybeRefreshCalendar();
-              if (mounted) {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => PrayerCalendarScreen(apiService: _apiService)));
-              }
-            } : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings),
-          onPressed: () async {
-            final changed = await Navigator.of(context)
-                .push(MaterialPageRoute(builder: (context) => const SettingsScreen()));
-            // Refresh only if settings changed
-            if (changed == true) {
-              await _loadSettings();
-              await _loadTimes();
-            }
-          },
-        )
-      ],
-    );
-  }
+
 
   // ═══════════════════════════════════════════════════════════════════════
   // 🔔 NOTIFICATION FUNCTIONS
@@ -3419,6 +3363,8 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
           final athanSoundType = AthanSoundType.fromValue(athanSoundTypeValue);
           final reminderEnabled = prefs.getBool('reminderEnabled') ?? false;
           final reminderMinutes = prefs.getInt('reminderMinutes') ?? 10;
+          final prayerNotificationsEnabled = prefs.getBool('prayerNotificationsEnabled') ?? true;
+          final enableCountdownTimer = prefs.getBool('enableCountdownTimer') ?? false;
           
           final manager = NotificationManager();
           final timezone = getDeviceTimezone();
@@ -3436,6 +3382,8 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
             notificationState: notificationState,
             athanSoundType: athanSoundType,
             timezone: timezone,
+            prayerNotificationsEnabled: prayerNotificationsEnabled,
+            enableCountdownTimer: enableCountdownTimer,
           );          
           // Delay to allow scheduled notifications to appear in the pending list
           // Different devices have different delays, so we use a longer wait
@@ -3497,6 +3445,7 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
             channelDescription: 'Silent notifications for prayer time calculation errors',
             importance: Importance.low,
             priority: Priority.low,
+            icon: 'ic_notification',
             enableVibration: false,
             playSound: false,
             enableLights: false,
@@ -3584,165 +3533,13 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
     return ValueListenableBuilder<int>(
       valueListenable: settingsChangeNotifier,
       builder: (context, _, __) {
-        return _buildScaffold();
+        final ui = PrayerScreenUI(context: context, state: this);
+        return ui.buildScaffold();
       },
     );
   }
 
-  Widget _buildScaffold() {
-  if (_isLoading) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: const Center(child: CircularProgressIndicator()),
-    );
-  }
-
-  if (_errorMessage != null) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
-              const SizedBox(height: 16),
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadTimes,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  // Get screen dimensions for responsive layout
-  final responsive = ResponsiveSizes(context);
-  
-  return Scaffold(
-    appBar: _buildAppBar(),
-    body: RefreshIndicator(
-      onRefresh: _loadTimes,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Padding(
-          padding: responsive.paddingHorizontal,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: responsive.constrainedWidth,
-                minHeight: responsive.minScrollableHeight,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  // Date display - aesthetic design
-                  Padding(
-                    padding: EdgeInsets.only(bottom: responsive.spacingS),
-                    child: _buildDateDisplay(responsive),
-                  ),
-                  _buildCountdownTimer(responsive),
-                  ..._buildPrayerCards(responsive.cardSpacing, responsive),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-  List<Widget> _buildPrayerCards(double spacing, ResponsiveSizes responsive) {
-    // Extract prayer name, but don't highlight if it's "Fajr (Tomorrow)"
-    String next = '';
-    if (!_nextPrayerName.contains('Tomorrow')) {
-      next = _nextPrayerName.split(RegExp(r'\s|\(')).first;
-    }
-    
-    return [
-      _buildPrayerTimeCard('Fajr', _todayTimes?.fajr, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Fajr'),
-      SizedBox(height: spacing / 2),
-      _buildPrayerTimeCard('Sunrise', _todayTimes?.sunrise, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Sunrise'),
-      SizedBox(height: spacing / 2),
-      _buildPrayerTimeCard('Dhuhr', _todayTimes?.dhuhr, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Dhuhr'),
-      SizedBox(height: spacing / 2),
-      _buildPrayerTimeCard('Asr', _todayTimes?.asr, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Asr'),
-      SizedBox(height: spacing / 2),
-      _buildPrayerTimeCard('Maghrib', _todayTimes?.maghrib, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Maghrib'),
-      SizedBox(height: spacing / 2),
-      _buildPrayerTimeCard('Isha', _todayTimes?.isha, spacing, responsive.prayerNameSize, responsive.prayerTimeSize, isNext: next == 'Isha'),
-    ];
-  }
-
-  Widget _buildPrayerTimeCard(
-    String prayerName,
-    String? time,
-    double spacing,
-    double nameSize,
-    double timeSize, {
-    bool isNext = false,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    final accent = scheme.primary;
-    final responsive = ResponsiveSizes(context);
-    
-    return Container(
-      margin: EdgeInsets.zero,
-      padding: EdgeInsets.symmetric(
-        vertical: responsive.spacingS,
-        horizontal: responsive.spacingM,
-      ),
-      decoration: BoxDecoration(
-        color: isNext
-            ? scheme.primaryContainer.withValues(alpha: 0.8)
-            : scheme.primaryContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(responsive.borderRadiusStandard),
-        border: Border.all(
-          color: isNext
-              ? scheme.primary
-              : scheme.primary.withValues(alpha: 0.5),
-          width: isNext ? 2 : 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                if (isNext) ...[Icon(Icons.play_arrow, color: scheme.onPrimaryContainer, size: nameSize * 0.9), SizedBox(width: responsive.spacingS)],
-                Expanded(
-                  child: Text(
-                    prayerName,
-                    style: TextStyle(
-                      fontSize: nameSize,
-                      fontWeight: isNext ? FontWeight.w700 : FontWeight.w600,
-                      color: isNext ? scheme.onPrimaryContainer : scheme.onPrimaryContainer.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            time ?? 'N/A',
-            style: TextStyle(
-              fontSize: timeSize,
-              fontWeight: FontWeight.bold,
-              color: isNext ? scheme.onPrimaryContainer : accent,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Moved to PrayerScreenUI class
 }
 
 class PrayerTimeScreen extends StatefulWidget {
@@ -3764,7 +3561,7 @@ class MyApp extends StatelessWidget {
           valueListenable: primaryHueNotifier,
           builder: (context, primaryHue, _) {
             // Light mode: more saturated colors
-            final lightPrimaryColor = HSLColor.fromAHSL(1.0, primaryHue % 360, 0.72, 0.45).toColor();
+            final lightPrimaryColor = HSLColor.fromAHSL(1.0, primaryHue % 360, 0.40, 0.45).toColor();
             
             // Dark mode: less saturated colors for readability
             final darkPrimaryColor = HSLColor.fromAHSL(1.0, primaryHue % 360, 0.62, 0.45).toColor();
@@ -3855,10 +3652,8 @@ Future<List<Map<String, dynamic>>> getPendingNotificationsWithMetadata() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize developer notification toggles to false (disabled by default)
+  // Initialize SharedPreferences
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool('devShowDailyRefreshNotification', false);
-  await prefs.setBool('devShowMonthlyRefreshNotification', false);
   
   // Initialize timezone data
   tzdata.initializeTimeZones();
@@ -3903,7 +3698,7 @@ void main() async {
   
   // Initialize local notifications
   const AndroidInitializationSettings androidInitializationSettings =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('ic_notification');
   
   const DarwinInitializationSettings iOSInitializationSettings =
       DarwinInitializationSettings(
@@ -3921,6 +3716,25 @@ void main() async {
     initializationSettings,
     onDidReceiveNotificationResponse: (NotificationResponse notificationResponse) async {
       debugPrint('Notification tapped: ${notificationResponse.payload}');
+      
+      try {
+        final payload = notificationResponse.payload;
+        if (payload != null) {
+          final data = jsonDecode(payload) as Map<String, dynamic>;
+          
+          // Handle reminder killer notification - cancel the reminder that's being replaced
+          if (data['type'] == 'reminder_killer') {
+            debugPrint('Killer notification triggered - cancelling reminder');
+            final reminderId = data['reminderId'] as int?;
+            if (reminderId != null) {
+              await flutterLocalNotificationsPlugin.cancel(reminderId);
+              debugPrint('Reminder notification cancelled: $reminderId');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error handling notification: $e');
+      }
       
       // Handle athan dismiss action
       if (notificationResponse.actionId == 'dismiss_athan') {
@@ -4206,6 +4020,15 @@ void main() async {
     return null;
   });
   
+  // Initialize CityLookupService for location-based city lookup
+  try {
+    final cityLookup = CityLookupService();
+    await cityLookup.init();
+    debugPrint('[Init] ✓ City lookup service initialized successfully');
+  } catch (e) {
+    debugPrint('[Init] ✗ Error initializing city lookup service: $e');
+  }
+  
   runApp(const MyApp());
 }
 
@@ -4228,6 +4051,31 @@ class _PrayerCalendarScreenState extends State<PrayerCalendarScreen> {
   late Future<Map<String, dynamic>> _calendarFuture;
   int? _todayHijriDay;
   final ScrollController _scrollController = ScrollController();
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PUBLIC GETTERS - For accessing private state from CalendarScreenUI
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  int? get todayHijriDay => _todayHijriDay;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PUBLIC WRAPPER METHODS - For calling private methods from CalendarScreenUI
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  void onRefreshPressed() {
+    setState(() {
+      _loadCalendarData();
+    });
+  }
+
+  String translateWeekday(String input) {
+    // Call the imported function from services/translation_transliteration.dart via alias
+    return translations_lib.translateWeekday(input);
+  }
+
+  String monthNumberToName(int month) {
+    return _monthNumberToName(month);
+  }
 
   @override
   void initState() {
@@ -4301,316 +4149,121 @@ class _PrayerCalendarScreenState extends State<PrayerCalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer.adaptive( context,0.4),
-        foregroundColor: Theme.of(context).colorScheme.primary,
-        title: const Text('Prayer Calendar'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _loadCalendarData();
-              });
-            },
-          ),
-        ],
-      ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _calendarFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('Error: ${snapshot.error}'),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _loadCalendarData();
-                      });
-                    },
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-          
-          if (!snapshot.hasData) {
-            return const Center(child: Text('No data available'));
-          }
-          
-          final calendar = snapshot.data!;
-          
-          // Find today's hijri day
-          if (_todayHijriDay == null) {
-            _todayHijriDay = _findCurrentHijriDay(calendar);
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _scrollToCurrentDay();
-            });
-          }
-          
-          // Build list of days - iterate through cached data sorted by Hijri day number
-          final dayEntries = <MapEntry<String, dynamic>>[];
-          
-          for (final entry in calendar.entries) {
-            if (entry.key.startsWith('_')) continue; // Skip metadata
-            
-            if (entry.value is Map) {
-              dayEntries.add(entry);
-            }
-          }
-          
-          // Sort by Hijri day number (1-29 first, then moon symbol at end)
-          dayEntries.sort((a, b) {
-            final hijriA = (a.value as Map)['Hijri']?.toString() ?? '';
-            final hijriB = (b.value as Map)['Hijri']?.toString() ?? '';
-            
-            // Moon symbols go to the end
-            if (hijriA == '☽' && hijriB != '☽') return 1;
-            if (hijriA != '☽' && hijriB == '☽') return -1;
-            if (hijriA == '☽' && hijriB == '☽') return 0;
-            
-            // Otherwise sort numerically
-            final numA = int.tryParse(hijriA) ?? 0;
-            final numB = int.tryParse(hijriB) ?? 0;
-            return numA.compareTo(numB);
-          });
-          
-          debugPrint('[Calendar] Built ${dayEntries.length} day entries');
-          
-          final days = <Widget>[];
-          
-          for (final entry in dayEntries) {
-            final dayData = entry.value as Map;
-            final cacheKeyIso = entry.key; // The cache key IS the ISO date
-            // Use the actual Hijri day from the data (could be a number or '☽' for moon observation)
-            final hijriDayStr = dayData['Hijri']?.toString() ?? '';
-            final hijriDayNum = hijriDayStr == '☽' ? -1 : int.tryParse(hijriDayStr) ?? 0;
-            debugPrint('[Calendar] Processing entry: key=${entry.key}, Hijri="$hijriDayStr", parsed=$hijriDayNum');
-            if (hijriDayNum != 0) {
-              days.add(_buildDayCard(hijriDayNum, hijriDayStr, dayData, cacheKeyIso, context));
-            }
-          }
-          
-          return RefreshIndicator(
-            onRefresh: () async {
-              setState(() {
-                _loadCalendarData();
-              });
-              await _calendarFuture;
-            },
-            child: ListView(
-              controller: _scrollController,
-              children: days.isEmpty
-                  ? [const Center(child: Text('No prayer times available'))]
-                  : days,
+    final colors = AppColorsStreamlined(context);
+    final ui = CalendarScreenUI(context: context, state: this);
+
+    final futureBuilder = FutureBuilder<Map<String, dynamic>>(
+      future: _calendarFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Error: ${snapshot.error}'),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _loadCalendarData();
+                    });
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
           );
-        },
-      ),
-    );
-  }
-
-  Widget _buildDayCard(int hijriDayNum, String hijriDayDisplay, Map dayData, String cacheKeyIso, BuildContext context) {
-    final isCurrentDay = (hijriDayNum > 0 && _todayHijriDay == hijriDayNum);
-    final scheme = Theme.of(context).colorScheme;
-    final responsive = ResponsiveSizes(context);
-    
-    final dayOfWeek = _translateWeekday(dayData['DayOfWeek']?.toString() ?? '');
-    // Use cache key as ISO date (format: 2025-11-22T00:00:00.000, we want the date part)
-    final gregorianDateIso = cacheKeyIso.split('T')[0]; // Extract 2025-11-22 from 2025-11-22T00:00:00.000
-    final hijriMonthArabic = dayData['HijriMonth']?.toString() ?? '';
-    final hijriMonthLatin = hijriMonthArabic.isNotEmpty ? transliterateHijriMonth(hijriMonthArabic) : '';
-    
-    // Parse ISO date to get day and month
-    String formattedDate = '—';
-    String formattedMonth = '—';
-    if (gregorianDateIso.isNotEmpty) {
-      try {
-        final parts = gregorianDateIso.split('-');
-        if (parts.length == 3) {
-          formattedDate = parts[2]; // Day
-          formattedMonth = _monthNumberToName(int.parse(parts[1])); // Month name
         }
-      } catch (e) {
-        debugPrint('Error parsing ISO date: $e');
-      }
-    }
-    
-    final fajr = dayData['Fajr']?.toString() ?? '—';
-    final sunrise = dayData['Sunrise']?.toString() ?? '—';
-    final dhuhr = dayData['Dhuhr']?.toString() ?? '—';
-    final asr = dayData['Asr']?.toString() ?? '—';
-    final maghrib = dayData['Maghrib']?.toString() ?? '—';
-    final isha = dayData['Isha']?.toString() ?? '—';
-    
-    debugPrint('[Day $hijriDayDisplay] Week: $dayOfWeek, ISO: $gregorianDateIso, Hijri: $hijriMonthArabic');
-    
-    return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: responsive.horizontalPadding,
-        vertical: responsive.verticalPadding,
-      ),
-      padding: EdgeInsets.all(responsive.spacingM),
-      decoration: BoxDecoration(
-        color: isCurrentDay
-            ? scheme.primaryContainer.withValues(alpha: 0.4)
-            : scheme.primaryContainer.withValues(alpha: 0.12),
-        border: Border.all(
-          color: isCurrentDay ? scheme.primary : scheme.primary.withValues(alpha: 0.15),
-          width: isCurrentDay ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(responsive.borderRadiusStandard),
-      ),
-      child: Column(
-        children: [
-          // Header: Hijri left, Gregorian right, Weekday between
-          Row(
-            children: [
-              // Left: Hijri day + month
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      hijriDayDisplay,
-                      style: TextStyle(
-                        fontSize: hijriDayDisplay == '☽' ? responsive.hijriDaySize * 1.1 : responsive.hijriDaySize,
-                        fontWeight: FontWeight.bold,
-                        color: scheme.primary,
-                        height: 1,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4.0), // Adjust the value as needed
-                         child: Text(
-                          hijriMonthLatin.isEmpty ? '—' : hijriMonthLatin.split(' ')[0],
-                          style: TextStyle(
-                           fontSize: responsive.hijriMonthSize,
-                           fontWeight: FontWeight.w600,
-                           color: scheme.primary.withValues(alpha: 0.7),
-                           height: 1.1,
-                          ),
-                        ),
-                    )
-                  ],
-                ),
-              ),
-              // Center: Weekday
-              Expanded(
-                child: Text(
-                  dayOfWeek.isEmpty ? '—' : dayOfWeek,
-                  style: TextStyle(
-                    fontSize: responsive.weekdaySize,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.primary.withValues(alpha: 0.8),
-                    letterSpacing: 0.3,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              // Right: Gregorian day + month
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        fontSize: responsive.gregorianDaySize,
-                        fontWeight: FontWeight.bold,
-                        color: scheme.primary,
-                        height: 1,
-                      ),
-                    ),
-                    Text(
-                      formattedMonth,
-                      style: TextStyle(
-                        fontSize: responsive.gregorianMonthSize,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.primary.withValues(alpha: 0.7),
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+
+        if (!snapshot.hasData) {
+          return const Center(child: Text('No data available'));
+        }
+
+        final calendar = snapshot.data!;
+
+        // Find today's hijri day
+        if (_todayHijriDay == null) {
+          _todayHijriDay = _findCurrentHijriDay(calendar);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToCurrentDay();
+          });
+        }
+
+        // Build list of days - iterate through cached data sorted by Hijri day number
+        final dayEntries = <MapEntry<String, dynamic>>[];
+
+        for (final entry in calendar.entries) {
+          if (entry.key.startsWith('_')) continue; // Skip metadata
+
+          if (entry.value is Map) {
+            dayEntries.add(entry);
+          }
+        }
+
+        // Sort by Hijri day number (1-29 first, then moon symbol at end)
+        dayEntries.sort((a, b) {
+          final hijriA = (a.value as Map)['Hijri']?.toString() ?? '';
+          final hijriB = (b.value as Map)['Hijri']?.toString() ?? '';
+
+          // Moon symbols go to the end
+          if (hijriA == '☽' && hijriB != '☽') return 1;
+          if (hijriA != '☽' && hijriB == '☽') return -1;
+          if (hijriA == '☽' && hijriB == '☽') return 0;
+
+          // Otherwise sort numerically
+          final numA = int.tryParse(hijriA) ?? 0;
+          final numB = int.tryParse(hijriB) ?? 0;
+          return numA.compareTo(numB);
+        });
+
+        debugPrint('[Calendar] Built ${dayEntries.length} day entries');
+
+        final days = <Widget>[];
+
+        for (final entry in dayEntries) {
+          final dayData = entry.value as Map;
+          final cacheKeyIso = entry.key; // The cache key IS the ISO date
+          // Use the actual Hijri day from the data (could be a number or '☽' for moon observation)
+          final hijriDayStr = dayData['Hijri']?.toString() ?? '';
+          final hijriDayNum =
+              hijriDayStr == '☽' ? -1 : int.tryParse(hijriDayStr) ?? 0;
+          debugPrint(
+              '[Calendar] Processing entry: key=${entry.key}, Hijri="$hijriDayStr", parsed=$hijriDayNum');
+          if (hijriDayNum != 0) {
+            days.add(ui.buildDayCard(hijriDayNum, hijriDayStr, dayData,
+                cacheKeyIso, colors));
+          }
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() {
+              _loadCalendarData();
+            });
+            await _calendarFuture;
+          },
+          child: ListView(
+            controller: _scrollController,
+            children: days.isEmpty
+                ? [const Center(child: Text('No prayer times available'))]
+                : days,
           ),
-          SizedBox(height: responsive.spacingM),
-          // Prayer times grid (3 columns x 2 rows)
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.6,
-            mainAxisSpacing: responsive.cardSpacing,
-            crossAxisSpacing: responsive.cardSpacing,
-            children: [
-              _buildPrayerTimeCell('Fajr', fajr, scheme, responsive),
-              _buildPrayerTimeCell('Sunrise', sunrise, scheme, responsive),
-              _buildPrayerTimeCell('Dhuhr', dhuhr, scheme, responsive),
-              _buildPrayerTimeCell('Asr', asr, scheme, responsive),
-              _buildPrayerTimeCell('Maghrib', maghrib, scheme, responsive),
-              _buildPrayerTimeCell('Isha', isha, scheme, responsive),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
+
+    return ui.buildScaffold(futureBuilder, colors, () {
+      setState(() {
+        _loadCalendarData();
+      });
+    });
   }
 
-  Widget _buildPrayerTimeCell(String name, String time, ColorScheme scheme, [ResponsiveSizes? responsive]) {
-    responsive ??= ResponsiveSizes(context);
-    
-    return Container(
-      padding: EdgeInsets.all(responsive.spacingXS),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(responsive.borderRadiusSmall),
-        border: Border.all(
-          color: scheme.primary.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            name,
-            style: TextStyle(
-              fontSize: responsive.cellNameSize,
-              fontWeight: FontWeight.w600,
-              color: scheme.primary,
-            ),
-          ),
-          SizedBox(height: responsive.spacingXS),
-          Text(
-            time,
-            style: TextStyle(
-              fontSize: responsive.cellTimeSize,
-              fontWeight: FontWeight.bold,
-              color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Moved to CalendarScreenUI class
 
-  String _translateWeekday(String input) {
-    return translateWeekday(input);
-  }
 
   String _monthNumberToName(int month) {
     const months = [
@@ -4785,6 +4438,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               channelDescription: 'Countdown timer notifications',
               importance: Importance.high,
               priority: Priority.high,
+              icon: 'ic_notification',
               enableLights: true,
               tag: 'reminder_test',
               color: Colors.orange,
@@ -4842,6 +4496,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               channelDescription: 'Silent killer notification',
               importance: Importance.high,
               priority: Priority.high,
+              icon: 'ic_notification',
               enableLights: true,
               tag: 'reminder_test',
               color: Colors.orange,
@@ -4906,6 +4561,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SnackBar(content: Text('✗ Failed: $e')),
         );
       }
+    }
+  }
+
+  /// Test timeoutAfter: schedules a notification 2 seconds from now that lasts 3 seconds
+  Future<void> _testTimeoutAfterNotification() async {
+    try {
+      debugPrint('═════ TEST TIMEOUT AFTER ═════');
+      final messenger = ScaffoldMessenger.of(context);
+      
+      final location = getDeviceTimezone();
+      final now = tz.TZDateTime.now(location);
+      final scheduledTime = now.add(const Duration(seconds: 2));
+      
+      debugPrint('[TimeoutTest] Current time: $now');
+      debugPrint('[TimeoutTest] Notification will fire in: 2 seconds');
+      debugPrint('[TimeoutTest] Scheduled time: $scheduledTime');
+      debugPrint('[TimeoutTest] Will auto-dismiss after: 3 seconds (3000ms)');
+      
+      const testTimeoutId = 99997;
+      
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        testTimeoutId,
+        '⏰ TimeoutAfter Test',
+        'This notification will auto-dismiss after 3 seconds',
+        scheduledTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'pray_times_channel_full_v2',
+            'Prayer Times (Full)',
+            channelDescription: 'Athan notifications with vibration and sound',
+            importance: Importance.max,
+            priority: Priority.max,
+            icon: 'ic_notification',
+            enableLights: true,
+            enableVibration: true,
+            playSound: true,
+            tag: 'timeout_test',
+            color: Colors.purple,
+            // This should dismiss the notification after 3 seconds (3000 milliseconds)
+            timeoutAfter: 3000,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.alarmClock,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      );
+      
+      debugPrint('[TimeoutTest] ✓ Notification scheduled');
+      
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('TimeoutAfter test scheduled:\n• Fires in 2 seconds\n• Auto-dismisses after 3 seconds'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[TimeoutTest] ✗ Failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✗ Failed: $e')),
+      );
     }
   }
 
@@ -5759,6 +5480,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     debugPrint('[SaveSettings] Rescheduling notifications with updated states...');
     await refreshScheduledNotificationsGlobal();
     
+    // Refresh the pending notifications display in the Settings UI
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _updatePendingNotificationsFuture();
+      }
+    });
+    
     // ✅ Update all original values to match current values so the button highlight resets
     if (mounted) {
       setState(() {
@@ -5775,7 +5503,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _originalNotifySunrise = _notifySunrise;
         _originalNotifyDhuhr = _notifyDhuhr;
         _originalNotifyAsr = _notifyAsr;
-        _originalNotifyMaghrib = _originalNotifyMaghrib;
+        _originalNotifyMaghrib = _notifyMaghrib;
         _originalNotifyIsha = _notifyIsha;
         _originalReminderFajr = _reminderFajr;
         _originalReminderSunrise = _reminderSunrise;
@@ -5854,7 +5582,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (existingIndex != -1) {
         _favorites.removeAt(existingIndex);
       } else {
-        final fav = {'type': 'city', 'value': cityName, 'label': cityName};
+        // Store Arabic name as value, but use Latin name as display label
+        final latinName = _getLatinCityName(cityName);
+        final fav = {'type': 'city', 'value': cityName, 'label': latinName};
         _favorites.add(jsonEncode(fav));
       }
     });
@@ -6217,7 +5947,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Widget _buildAdvancedNotificationControl() {
+  Widget _buildAdvancedNotificationControl(AppColorsStreamlined colors) {
     const prayers = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
     
     return Column(
@@ -6226,10 +5956,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Three columns: Names | Prayers | Reminders
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.15),
+            color: colors.secondarycontainer_bg,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+              color: colors.secondarycontainer_txt,
               width: 1,
             ),
           ),
@@ -6247,12 +5977,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.tertiarycontainer_bg,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Align(
                         alignment: Alignment.center,
-                        child: Text('Prayer', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9))),
+                        child: Text('Prayer', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: colors.tertiarycontainer_txt)),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -6264,12 +5994,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           height: 40,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                            color: colors.tertiarycontainer_bg2,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Align(
                             alignment: Alignment.center,
-                            child: Text(prayer, style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize)),
+                            child: Text(prayer, style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize,color: colors.tertiarycontainer_txt)),
                           ),
                         ),
                       );
@@ -6288,12 +6018,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.tertiarycontainer_bg,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Align(
                         alignment: Alignment.center,
-                        child: Text('Reminder', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9))),
+                        child: Text('Reminder', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: colors.tertiarycontainer_txt)),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -6306,7 +6036,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                            color: isEnabled ? colors.tertiarycontainer_bg3 : colors.tertiarycontainer_bg3.withOpacity(0.5),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Align(
@@ -6317,7 +6047,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               icon: Icon(
                                 isEnabled ? _getNotificationIcon(state) : Icons.notifications_off,
                                 size: 20,
-                                color: isEnabled ? _getNotificationIconColor(context, state) : Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                color: isEnabled ? _getNotificationIconColor(context, state) : colors.tertiarycontainer_txt.withOpacity(0.5),
                               ),
                               onPressed: isEnabled ? () {
                                 setState(() {
@@ -6326,7 +6056,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 });
                                 _detectChanges();
                               } : null,
-                              tooltip: isEnabled ? _getNotificationTooltip(state) : 'Disabled',
+                              tooltip: isEnabled ? _getNotificationTooltip(state) : 'Disabled (Reminders turned off)',
                             ),
                           ),
                         ),
@@ -6346,18 +6076,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.tertiarycontainer_bg,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Align(
                         alignment: Alignment.center,
-                        child: Text('Athan', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9))),
+                        child: Text('Athan', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, fontWeight: FontWeight.w600, color: colors.tertiarycontainer_txt)),
                       ),
                     ),
                     const SizedBox(height: 8),
                     ...prayers.map((prayer) {
                       final state = _prayerNotificationStates[prayer] ?? NotificationState.full;
-                      final isEnabled = switch (prayer) {
+                      final perPrayerEnabled = switch (prayer) {
                         'Fajr' => _notifyFajr,
                         'Sunrise' => _notifySunrise,
                         'Dhuhr' => _notifyDhuhr,
@@ -6366,13 +6096,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Isha' => _notifyIsha,
                         _ => true,
                       };
+                      final isEnabled = perPrayerEnabled && _prayerNotificationsEnabled;
                       
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8.0),
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                            color: isEnabled ? colors.tertiarycontainer_bg3 : colors.tertiarycontainer_bg3.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Align(
@@ -6383,7 +6114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               icon: Icon(
                                 isEnabled ? _getNotificationIcon(state) : Icons.notifications_off,
                                 size: 20,
-                                color: isEnabled ? _getNotificationIconColor(context, state) : Colors.grey,
+                                color: isEnabled ? _getNotificationIconColor(context, state) : colors.tertiarycontainer_txt.withValues(alpha: 0.5),
                               ),
                               onPressed: isEnabled ? () {
                                 setState(() {
@@ -6395,7 +6126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 });
                                 _detectChanges();
                               } : null,
-                              tooltip: isEnabled ? _getNotificationTooltip(state) : 'Disabled',
+                              tooltip: isEnabled ? _getNotificationTooltip(state) : 'Disabled (Athan turned off)',
                             ),
                           ),
                         ),
@@ -6412,9 +6143,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6.0),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+            color: colors.secondarycontainer_bg,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
           child: GridView.count(
             crossAxisCount: 2,
@@ -6428,36 +6158,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.notifications_off, size: 18, color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
+                  Icon(Icons.notifications_off, size: 18, color: colors.notificationicon_off),
                   const SizedBox(width: 8),
-                  Text('Off', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize)),
+                  Text('Off', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_txt) ),
                 ],
               ),
               // Silent
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.volume_off, size: 18, color: Theme.of(context).colorScheme.primary),
+                  Icon(Icons.volume_off, size: 18, color: colors.notificationicon_silent),
                   const SizedBox(width: 8),
-                  Text('Silent', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize)),
+                  Text('Silent', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_txt)),
                 ],
               ),
               // Vibrate
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.vibration, size: 18, color: Theme.of(context).colorScheme.primary),
+                  Icon(Icons.vibration, size: 18, color: colors.notificationicon_vibrate),
                   const SizedBox(width: 8),
-                  Text('Vibrate', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize)),
+                  Text('Vibrate', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_txt)),
                 ],
               ),
               // Full
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.notifications_active, size: 18, color: Theme.of(context).colorScheme.primary),
+                  Icon(Icons.notifications_active, size: 18, color: colors.notificationicon_full),
                   const SizedBox(width: 8),
-                  Text('Full', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize)),
+                  Text('Full', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_txt)),
                 ],
               ),
             ],
@@ -6477,11 +6207,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Color _getNotificationIconColor(BuildContext context, NotificationState state) {
+    final colors = AppColorsStreamlined(context);
     return switch (state) {
-      NotificationState.off => Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-      NotificationState.silent => Theme.of(context).colorScheme.primary,
-      NotificationState.vibrate => Theme.of(context).colorScheme.primary,
-      NotificationState.full => Theme.of(context).colorScheme.primary,
+      NotificationState.off => colors.notificationicon_off,
+      NotificationState.silent => colors.notificationicon_silent,
+      NotificationState.vibrate => colors.notificationicon_vibrate,
+      NotificationState.full => colors.notificationicon_full,
     };
   }
 
@@ -6505,24 +6236,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColorsStreamlined(context);
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Settings'),
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          foregroundColor: Theme.of(context).colorScheme.primary,
+          title:  Text('Settings', style: TextStyle(fontSize: ResponsiveSizes(context).titleSize, fontWeight: FontWeight.w600, color: colors.header_txt)),
+          backgroundColor: colors.header_bg,
+          foregroundColor: colors.header_txt,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(48),
             child: Container(
-              color: Theme.of(context).colorScheme.primaryContainer.adaptive(context, 0.2),
+              color: colors.tab_bg,
               child: TabBar(
                 tabs: const [
-                  Tab(text: 'City'),
+                  Tab(text: 'Source'),
                   Tab(text: 'Notifications'),
                   Tab(text: 'Misc'),
                 ],
-                unselectedLabelColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                unselectedLabelColor: colors.tab_txt,
+                labelColor: colors.HLtab_txt,
+                indicatorColor: colors.HLtab_txt,
               ),
             ),
           ),
@@ -6545,10 +6279,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           // Parent Rank: "Selected City" - Independent parent section, displays current selection
                           Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                              color: colors.primarycontainer_bg,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                color: colors.primarycontainer_txt,
                                 width: 1,
                               ),
                             ),
@@ -6556,13 +6290,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Selected City',
-                                  style: TextStyle(
-                                    fontSize: ResponsiveSizes(context).settingHeaderSize,
-                                    fontWeight: FontWeight.w600,
-                                    color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
-                                  ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Selected Location',
+                                      style: TextStyle(
+                                        fontSize: ResponsiveSizes(context).settingHeaderSize,
+                                        fontWeight: FontWeight.w700,
+                                        color: colors.primarycontainer_txt,
+                                      ),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        try {
+                                          // Request location permission
+                                          final pos = await LocationService.getOneOffPosition();
+                                          if (pos != null) {
+                                            // Fill in offline settings
+                                            setState(() {
+                                              _adhanLatitudeController.text = pos.latitude.toStringAsFixed(6);
+                                              _adhanLongitudeController.text = pos.longitude.toStringAsFixed(6);
+                                              _adhanCityController.clear();
+                                              _adhanCountryController.clear();
+                                              _settingsChanged = true;
+                                            });
+
+                                            // Find closest city
+                                            final lookup = CityLookupService();
+                                            await lookup.init();
+                                            final city = lookup.findClosestCity(pos.latitude, pos.longitude, ApiService.ministrycityIds);
+
+                                            if (city != null) {
+                                              setState(() {
+                                                _selectedCityName = city['arabic'] ?? '';
+                                                _selectedCityId = city['ministry_id'] ?? 'N/A';
+                                                _settingsChanged = true;
+                                              });
+                                              debugPrint('[AutoLocate] Set city to: ${city['latin']} (ID: ${city['ministry_id']})');
+                                              messenger.showSnackBar(
+                                                SnackBar(content: Text('Location set: ${city['latin']}\nCoordinates: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}')),
+                                              );
+                                            }
+                                          } else {
+                                            messenger.showSnackBar(
+                                              const SnackBar(content: Text('Location permission denied or GPS is off')),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          debugPrint('[AutoLocate] Error: $e');
+                                          messenger.showSnackBar(
+                                            SnackBar(content: Text('Error: $e')),
+                                          );
+                                        }
+                                      },
+                                      icon: const Icon(Icons.my_location, size: 14),
+                                      label: const Text('Auto'),
+                                      style: ElevatedButton.styleFrom(
+                                        padding: EdgeInsets.symmetric(horizontal: ResponsiveSizes(context).spacingS, vertical: 0),
+                                        backgroundColor: colors.button_on,
+                                        foregroundColor: colors.button_off,
+                                        textStyle: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 SizedBox(height: ResponsiveSizes(context).spacingM),
                                 Container(
@@ -6571,34 +6363,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     vertical: ResponsiveSizes(context).spacingS,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                    color: colors.secondarycontainer_bg,
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                                    border: Border.all(color: colors.secondarycontainer_txt),
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.location_on, size: ResponsiveSizes(context).iconSizeMedium, color: Theme.of(context).colorScheme.primary),
+                                      Icon(Icons.location_on, size: ResponsiveSizes(context).iconSizeMedium, color: colors.secondarycontainer_txt),
                                       SizedBox(width: ResponsiveSizes(context).spacingS),
                                       Expanded(
                                         child: _useMinistry
                                             ? Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  Text(_getLatinCityName(_selectedCityName), style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize)),
-                                                  Text('ID: $_selectedCityId', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                                  Text(_getLatinCityName(_selectedCityName), style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize, color: colors.primarycontainer_txt)),
+                          Text('ID: $_selectedCityId', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_subtxt)),
                                                 ],
                                               )
                                             : Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   if (_adhanLatitudeController.text.trim().isNotEmpty && _adhanLongitudeController.text.trim().isNotEmpty)
-                                                    Text('Adhan coords: ${_adhanLatitudeController.text.trim()}, ${_adhanLongitudeController.text.trim()}', style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize))
+                                                    Text('${_adhanLatitudeController.text.trim()}, ${_adhanLongitudeController.text.trim()}', style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize))
                                                   else if (_adhanCityController.text.trim().isNotEmpty)
                                                     Text('${_adhanCityController.text.trim()}, ${_adhanCountryController.text.trim()}', style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize))
                                                   else
-                                                    Text('Adhan: no location set', style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize)),
+                                                    Text('No location set', style: TextStyle(fontWeight: FontWeight.w500, fontSize: ResponsiveSizes(context).settingLabelSize,color: colors.secondarycontainer_txt)),
                                                   SizedBox(height: ResponsiveSizes(context).spacingXS),
-                                                  Text(_isOfflineMode ? 'Offline Mode' : 'API Mode', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                                  Text(_isOfflineMode ? 'Offline Mode' : 'API Mode', style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.secondarycontainer_txt)),
                                                 ],
                                               ),
                                       ),
@@ -6614,10 +6406,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           if (_favorites.isNotEmpty) ...[
                             Container(
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                                color: colors.primarycontainer_bg,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                  color: colors.primarycontainer_txt,
                                   width: 1,
                                 ),
                               ),
@@ -6630,7 +6422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     style: TextStyle(
                                       fontSize: ResponsiveSizes(context).settingHeaderSize,
                                       fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                      color: colors.primarycontainer_txt,
                                     ),
                                   ),
                                   SizedBox(height: ResponsiveSizes(context).spacingM),
@@ -6717,11 +6509,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             child: ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: isSelected 
-                                                  ? Theme.of(context).colorScheme.primary
-                                                  : getTextInputPromptColor(context),
+                                                  ? colors.button_on
+                                                  : colors.button_off,
                                                 foregroundColor: isSelected 
-                                                  ? Theme.of(context).colorScheme.onPrimary
-                                                  : Theme.of(context).colorScheme.onSurface,
+                                                  ? colors.button_off
+                                                  : colors.button_on,
                                                 elevation: isSelected ? 2 : 0,
                                                 padding: EdgeInsets.symmetric(
                                                   horizontal: ResponsiveSizes(context).spacingM,
@@ -6749,10 +6541,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             // Parent Rank: "Search Cities" - Independent parent section, city search interface (only when using Ministry source)
                             Container(
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                                color: colors.primarycontainer_bg,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                  color: colors.primarycontainer_txt,
                                   width: 1,
                                 ),
                               ),
@@ -6765,7 +6557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     style: TextStyle(
                                       fontSize: ResponsiveSizes(context).settingHeaderSize,
                                       fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                      color: colors.primarycontainer_txt,
                                     ),
                                   ),
                                   SizedBox(height: ResponsiveSizes(context).spacingM),
@@ -6776,31 +6568,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     decoration: InputDecoration(
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                        borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                       ),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                        borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                       ),
                                       focusedBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                                        borderSide: BorderSide(color: colors.primarycontainer_txt, width: 2),
                                       ),
                                       hintText: 'e.g., "Casablanca" or "الدار"',
                                       hintStyle: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                        color: colors.textfield_subtxt,
                                         fontSize: ResponsiveSizes(context).bodySize,
                                       ),
-                                      prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      prefixIcon: Icon(Icons.search, color: colors.secondarycontainer_txt),
                                       suffixIcon: IconButton(
-                                        icon: Icon(Icons.clear, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                        icon: Icon(Icons.clear, color: colors.secondarycontainer_txt),
                                         onPressed: () {
                                           _searchController.clear();
                                           _filterCities('');
                                         },
                                       ),
                                       filled: true,
-                                      fillColor: getTextInputPromptColor(context),
+                                      fillColor: colors.textfield_bg,
                                     ),
                                   ),
                                   SizedBox(height: ResponsiveSizes(context).spacingM),
@@ -6808,7 +6600,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     height: 250,
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                                        color: colors.surface_bg,
+                                        border: Border.all(color: colors.secondarycontainer_txt),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: ListView.builder(
@@ -6825,15 +6618,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             }
                                           });
                                           final bgColor = index.isEven
-                                              ? Theme.of(context).colorScheme.surface
-                                              : Theme.of(context).colorScheme.surface.withValues(alpha: 0.5);
+                                              ? colors.search_odd
+                                              : colors.search_even;
                                           // Use cached city metadata instead of repeated lookups
                                           final cityData = _cityCache[city];
                                           final cityId = cityData?['id'] ?? '';
                                           final latinName = cityData?['latin'] ?? '';
 
                                           return Material(
-                                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4) : bgColor,
+                                            color: isSelected ? colors.search_selected : bgColor,
                                             child: InkWell(
                                               onTap: () => _selectCity(city),
                                               child: Container(
@@ -6848,7 +6641,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                           Text(_getLatinCityName(city), style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w500)),
                                                           Text(
                                                             '$cityId${latinName.isNotEmpty ? ' • $city' : ''}',
-                                                            style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                                            style: TextStyle(fontSize: ResponsiveSizes(context).bodySize, color: colors.surface_subtxt),
                                                           ),
                                                         ],
                                                       ),
@@ -6856,7 +6649,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                     IconButton(
                                                       icon: Icon(
                                                         isFavorite ? Icons.star : Icons.star_outline,
-                                                        color: isFavorite ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                        color: isFavorite ? colors.search_star : colors.search_star,
                                                         size: 20,
                                                       ),
                                                       onPressed: () => _toggleFavorite(city),
@@ -6877,7 +6670,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     style: TextStyle(
                                       fontSize: ResponsiveSizes(context).bodySize,
                                       fontWeight: FontWeight.normal,
-                                      color: Theme.of(context).colorScheme.onSurface,
+                                      color: colors.primarycontainer_txt,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -6891,23 +6684,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           decoration: InputDecoration(
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                              borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                             ),
                                             enabledBorder: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                              borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                             ),
                                             focusedBorder: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                                              borderSide: BorderSide(color: colors.primarycontainer_txt, width: 2),
                                             ),
                                             hintText: 'Enter ID (e.g., 58)',
-                                            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                                            hintStyle: TextStyle(color: colors.textfield_subtxt),
                                             filled: true,
-                                            fillColor: getTextInputPromptColor(context),
+                                            fillColor: colors.textfield_bg,
                                             suffixIcon: _directIdController.text.isNotEmpty
                                                 ? IconButton(
-                                                    icon: Icon(Icons.clear, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                                    icon: Icon(Icons.clear, color: colors.secondarycontainer_txt),
                                                     onPressed: () {
                                                       _directIdController.clear();
                                                       setState(() {});
@@ -6921,15 +6714,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       const SizedBox(width: 8),
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                                          foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                                          backgroundColor: colors.button_on,
+                                          foregroundColor: colors.button_off,
                                           elevation: 0,
                                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                         ),
                                         onPressed: _directIdController.text.isNotEmpty
                                             ? () => _selectCityById(_directIdController.text)
                                             : null,
-                                        child: Text('Go', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w500)),
+                                        child: Text('Go', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w500, )),
                                       ),
                                     ],
                                   ),
@@ -6946,10 +6739,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // Prayer Times Source Toggle (Ministry vs API/Offline)
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                      color: colors.primarycontainer_bg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_txt,
                         width: 1,
                       ),
                     ),
@@ -6962,16 +6755,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(
                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                            color: colors.primarycontainer_txt,
                           ),
                         ),
                         const SizedBox(height: 12),
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+                            color: colors.secondarycontainer_bg,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                            border: Border.all(color: colors.secondarycontainer_txt),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -6981,12 +6774,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: TextStyle(
                                   fontSize: ResponsiveSizes(context).settingLabelSize,
                                   fontWeight: FontWeight.w500,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color: colors.secondarycontainer_txt,
                                 ),
                               ),
                               Switch(
                                 value: _useMinistry,
-                                activeColor: Theme.of(context).colorScheme.primary,
+                                activeColor: colors.switch_on,
+                                inactiveThumbColor: colors.switch_off,
+                                activeTrackColor: colors.switch_track_on,
+                                inactiveTrackColor: colors.switch_track_off,
+                                trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
                                 onChanged: (v) {
                                   setState(() => _useMinistry = v);
                                   _detectChanges();
@@ -7005,10 +6802,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // Unified Prayer Times Source - Merges API and Offline modes
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_bg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_txt,
                           width: 1,
                         ),
                       ),
@@ -7021,7 +6818,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(
                               fontSize: ResponsiveSizes(context).settingHeaderSize,
                               fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                              color: colors.primarycontainer_txt,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -7030,9 +6827,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                              color: colors.secondarycontainer_bg,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                              border: Border.all(color: colors.secondarycontainer_txt),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -7042,19 +6839,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _isOfflineMode ? 'Offline Mode' : 'API Mode',
+                                        _isOfflineMode ? 'Offline Mode' : 'API Mode (3rd party)',
                                         style: TextStyle(
                                           fontSize: ResponsiveSizes(context).settingLabelSize,
                                           fontWeight: FontWeight.w500,
-                                          color: Theme.of(context).colorScheme.onSurface,
+                                          color: colors.secondarycontainer_txt,
                                         ),
-                                      ),
+                                      )
                                     ],
                                   ),
                                 ),
                                 Switch(
                                   value: _isOfflineMode,
-                                  activeColor: Theme.of(context).colorScheme.primary,
+                                  activeColor: colors.switch_on,
+                                  inactiveThumbColor: colors.switch_off,
+                                  activeTrackColor: colors.switch_track_on,
+                                  inactiveTrackColor: colors.switch_track_off,
+                                  trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
+
                                   onChanged: (v) {
                                     setState(() => _isOfflineMode = v);
                                     _detectChanges();
@@ -7070,7 +6872,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(
                               fontSize: ResponsiveSizes(context).settingLabelSize,
                               fontWeight: FontWeight.w500,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                              color: colors.primarycontainer_subtxt,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -7083,24 +6885,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   style: TextStyle(fontSize: ResponsiveSizes(context).settingInputSize),
                                   decoration: InputDecoration(
                                     labelText: 'Latitude',
-                                    labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                    prefixIcon: Icon(Icons.my_location, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                    labelStyle: TextStyle(color: colors.textfield_subtxt),
+                                    prefixIcon: Icon(Icons.my_location, color: colors.secondarycontainer_txt),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                      borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                      borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                                      borderSide: BorderSide(color: colors.primarycontainer_txt, width: 2),
                                     ),
                                     hintText: '33.5898',
-                                    hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                                    hintStyle: TextStyle(color: colors.textfield_subtxt),
                                     filled: true,
-                                    fillColor: getTextInputPromptColor(context),
+                                    fillColor: colors.textfield_bg,
                                   ),
                                   onChanged: (_) => _detectChanges(),  // Latitude: detect changes
                                 ),
@@ -7113,24 +6915,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   style: TextStyle(fontSize: ResponsiveSizes(context).settingInputSize),
                                   decoration: InputDecoration(
                                     labelText: 'Longitude',
-                                    labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                    prefixIcon: Icon(Icons.location_searching, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                    labelStyle: TextStyle(color: colors.textfield_subtxt),
+                                    prefixIcon: Icon(Icons.location_searching, color: colors.secondarycontainer_txt),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                      borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                      borderSide: BorderSide(color: colors.secondarycontainer_txt),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                                      borderSide: BorderSide(color: colors.primarycontainer_txt, width: 2),
                                     ),
                                     hintText: '-7.6038',
-                                    hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                                    hintStyle: TextStyle(color: colors.textfield_subtxt),
                                     filled: true,
-                                    fillColor: getTextInputPromptColor(context),
+                                    fillColor: colors.textfield_bg,
                                   ),
                                   onChanged: (_) => _detectChanges(),  // Longitude: detect changes
                                 ),
@@ -7145,8 +6947,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Center(
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                                foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                                backgroundColor: colors.button_on,
+                                foregroundColor: colors.button_off,
                                 elevation: 0,
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               ),
@@ -7174,8 +6976,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SwitchListTile(
                     title: Text(
                       'Enable Notifications',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: ResponsiveSizes(context).titleSize),
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: ResponsiveSizes(context).titleSize, color: colors.primarycontainer_txt),
                     ),
+                    activeColor: colors.switch_on,
+                    inactiveThumbColor: colors.switch_off,
+                    activeTrackColor: colors.switch_track_on,
+                    inactiveTrackColor: colors.switch_track_off,
+                    trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
                     value: _notificationsEnabled,
                     onChanged: (v) {
                       setState(() => _notificationsEnabled = v);
@@ -7184,7 +6991,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _requestNotificationPermission();
                       }
                     },
-                    activeColor: Theme.of(context).colorScheme.primary,
                   ),
                   // All elements below are children of Enable Notifications grandparent
                   if (_notificationsEnabled) ...[
@@ -7192,10 +6998,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // Parent Rank: "Athan Notifications" - Child of Enable Notifications grandparent
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_bg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_txt,
                           width: 1,
                         ),
                       ),
@@ -7205,7 +7011,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(
                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                            color: colors.primarycontainer_txt,
                           ),
                         ),
                         value: _prayerNotificationsEnabled,
@@ -7213,7 +7019,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setState(() => _prayerNotificationsEnabled = v);
                           _detectChanges();
                         },
-                        activeColor: Theme.of(context).colorScheme.primary,
+                        activeColor: colors.switch_on,
+                        inactiveThumbColor: colors.switch_off,
+                        activeTrackColor: colors.switch_track_on,
+                        inactiveTrackColor: colors.switch_track_off,
+                        trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
                     ),
@@ -7221,10 +7031,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // Parent Rank: "Prayer Reminder" - Child of Enable Notifications grandparent, parent of Minutes/Countdown Timer
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_bg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_txt,
                           width: 1,
                         ),
                       ),
@@ -7234,7 +7044,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(
                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                            color: colors.primarycontainer_txt,
                           ),
                         ),
                         value: _reminderEnabled,
@@ -7242,17 +7052,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setState(() => _reminderEnabled = v);
                           _detectChanges();
                         },
-                        activeColor: Theme.of(context).colorScheme.primary,
+                        activeColor: colors.switch_on,
+                        inactiveThumbColor: colors.switch_off,
+                        activeTrackColor: colors.switch_track_on,
+                        inactiveTrackColor: colors.switch_track_off,
+                        trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
                     ),
                     // Child elements: Minutes input and Countdown Timer (only visible when reminder enabled)
                     if (_reminderEnabled)
                       Padding(
-                        padding: const EdgeInsets.only(left: 32.0, top: 8.0, bottom: 8.0),
+                        padding: const EdgeInsets.only(left: 0, top: 8.0, bottom: 8.0),
                         // Child Rank: "Minutes before" input - Child of Prayer Reminder parent
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 300, minWidth: 100),
+                          constraints: const BoxConstraints(maxWidth: 1000, minWidth: 100),
                           child: TextField(
                             controller: _reminderMinutesController,
                             enabled: true,
@@ -7261,19 +7075,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                                  color: colors.secondarycontainer_txt,
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                                  color: colors.secondarycontainer_txt,
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary,
+                                  color: colors.primarycontainer_txt,
                                   width: 2,
                                 ),
                               ),
@@ -7282,7 +7096,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               suffixText: 'min',
                               hintText: 'Minutes before',
                               hintStyle: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                                color: colors.textfield_subtxt,
                               ),
                             ),
                             style: TextStyle(fontSize: ResponsiveSizes(context).settingInputSize),
@@ -7328,13 +7142,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // Child Rank: "Countdown Timer" - Child of Prayer Reminder parent
                     if (_reminderEnabled)
                       Padding(
-                        padding: const EdgeInsets.only(left: 32.0, top: 0.0, bottom: 12.0),
+                        padding: const EdgeInsets.only(left: 0, top: 0.0, bottom: 12.0),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.15),
+                            color: colors.secondarycontainer_bg,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                              color: colors.secondarycontainer_txt,
                               width: 1,
                             ),
                           ),
@@ -7344,7 +7158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: TextStyle(
                                 fontSize: ResponsiveSizes(context).settingLabelSize,
                                 fontWeight: FontWeight.w500,
-                                color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                color: colors.secondarycontainer_txt,
                               ),
                             ),
                             value: _enableCountdownTimer,
@@ -7352,7 +7166,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               setState(() => _enableCountdownTimer = v);
                               _detectChanges();
                             },
-                            activeColor: Theme.of(context).colorScheme.primary,
+                            activeColor: colors.switch_on,
+                            inactiveThumbColor: colors.switch_off,
+                            activeTrackColor: colors.switch_track_on,
+                            inactiveTrackColor: colors.switch_track_off,
+                            trackOutlineColor: WidgetStateProperty.all(colors.switch_border),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12,),
                           ),
                         ),
@@ -7363,10 +7181,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 0.0),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_bg,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                            color: colors.primarycontainer_txt,
                             width: 1,
                           ),
                         ),
@@ -7379,7 +7197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(
                               fontSize: ResponsiveSizes(context).settingHeaderSize,
                               fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                              color: colors.primarycontainer_txt,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -7389,12 +7207,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: !_useAdvancedNotificationControl
-                                        ? Theme.of(context).colorScheme.primaryContainer
-                                        : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
-                                    foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                        ? colors.button_on
+                                        : colors.button_off,
+                                    foregroundColor: !_useAdvancedNotificationControl
+                                        ? colors.button_off
+                                        : colors.button_on,
                                     side: !_useAdvancedNotificationControl
-                                        ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-                                        : BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                        ? BorderSide(color: colors.button_off, width: 2)
+                                        : BorderSide(color: colors.button_on),
                                   ),
                                   onPressed: () {
                                     setState(() => _useAdvancedNotificationControl = false);
@@ -7408,12 +7228,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _useAdvancedNotificationControl
-                                        ? Theme.of(context).colorScheme.primaryContainer
-                                        : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
-                                    foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                        ? colors.button_on
+                                        : colors.button_off,
+                                    foregroundColor: _useAdvancedNotificationControl
+                                        ? colors.button_off
+                                        : colors.button_on,
                                     side: _useAdvancedNotificationControl
-                                        ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-                                        : BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                        ? BorderSide(color: colors.button_off, width: 2)
+                                        : BorderSide(color: colors.button_on),
                                   ),
                                   onPressed: () {
                                     setState(() => _useAdvancedNotificationControl = true);
@@ -7434,7 +7256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Global Notification Control', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w400, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9))),
+                                  Text('Global Notification Control', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w400, color: colors.primarycontainer_txt)),
                                   const SizedBox(height: 12),
                                 ],
                               ),
@@ -7446,14 +7268,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: _notificationState == NotificationState.silent
-                                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                                          : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
+                                          ? colors.button_on
+                                          : colors.button_off,
                                       foregroundColor: _notificationState == NotificationState.silent
-                                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                                          : Theme.of(context).colorScheme.onSurface,
+                                          ? colors.button_off
+                                          : colors.button_on,
                                       side: _notificationState == NotificationState.silent
-                                          ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-                                          : BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                          ? BorderSide(color: colors.button_on, width: 2)
+                                          : BorderSide(color: colors.button_on),
                                     ),
                                     onPressed: () {
                                       setState(() => _notificationState = NotificationState.silent);
@@ -7467,14 +7289,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: _notificationState == NotificationState.vibrate
-                                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                                          : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
+                                          ? colors.button_on
+                                          : colors.button_off,
                                       foregroundColor: _notificationState == NotificationState.vibrate
-                                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                                          : Theme.of(context).colorScheme.onSurface,
+                                          ? colors.button_off
+                                          : colors.button_on,
                                       side: _notificationState == NotificationState.vibrate
-                                          ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-                                          : BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                          ? BorderSide(color: colors.button_on, width: 2)
+                                          : BorderSide(color: colors.button_on),
                                     ),
                                     onPressed: () {
                                       setState(() => _notificationState = NotificationState.vibrate);
@@ -7488,14 +7310,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: _notificationState == NotificationState.full
-                                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                                          : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
+                                          ? colors.button_on
+                                          : colors.button_off,
                                       foregroundColor: _notificationState == NotificationState.full
-                                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                                          : Theme.of(context).colorScheme.onSurface,
+                                          ? colors.button_off
+                                          : colors.button_on,
                                       side: _notificationState == NotificationState.full
-                                          ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-                                          : BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                          ? BorderSide(color: colors.button_on, width: 2)
+                                          : BorderSide(color: colors.button_on),
                                     ),
                                     onPressed: () {
                                       setState(() => _notificationState = NotificationState.full);
@@ -7511,9 +7333,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                                color: colors.secondarycontainer_bg,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                                border: Border.all(color: colors.secondarycontainer_txt),
                               ),
                               child: Row(
                                 children: [
@@ -7523,7 +7345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         : _notificationState == NotificationState.vibrate
                                             ? Icons.vibration
                                             : Icons.volume_up,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: colors.primarycontainer_txt,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -7534,7 +7356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           _notificationState.label,
                                           style: TextStyle(
                                             fontWeight: FontWeight.w600,
-                                            color: Theme.of(context).colorScheme.primary,
+                                            color: colors.secondarycontainer_txt,
                                           ),
                                         ),
                                         const SizedBox(height: 4),
@@ -7544,7 +7366,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               : _notificationState == NotificationState.vibrate
                                                   ? 'Vibration only, no sound'
                                                   : 'Full sound and vibration',
-                                          style: TextStyle(fontSize: ResponsiveSizes(context).bodySize),
+                                          style: TextStyle(fontSize: ResponsiveSizes(context).bodySize , color: colors.secondarycontainer_subtxt),
                                         ),
                                       ],
                                     ),
@@ -7559,13 +7381,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Granular Notification Control', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w400, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9))),
+                                  Text('Granular Notification Control', style: TextStyle(fontSize: ResponsiveSizes(context).settingLabelSize, fontWeight: FontWeight.w400, color: colors.primarycontainer_txt)),
                                   const SizedBox(height: 12),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 12),
-                            _buildAdvancedNotificationControl(),
+                            _buildAdvancedNotificationControl(colors),
                           ],
                         ],
                         ),
@@ -7577,10 +7399,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_bg,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                            color: colors.primarycontainer_txt,
                             width: 1,
                           ),
                         ),
@@ -7593,19 +7415,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: TextStyle(
                                 fontSize: ResponsiveSizes(context).settingHeaderSize,
                                 fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                color: colors.primarycontainer_txt,
                               ),
                             ),
                             const SizedBox(height: 12),
                             Container(
                               decoration: BoxDecoration(
+                                color: colors.dropdown_bg,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                                border: Border.all(color: colors.dropdown_txt),
                               ),
                               child: DropdownButton<AthanSoundType>(
                                 value: _athanSoundType,
                                 isExpanded: true,
                                 underline: const SizedBox(),
+                                dropdownColor: colors.dropdown_bg,
+                                style: TextStyle(color: colors.dropdown_txt),
                                 items: AthanSoundType.values.map((AthanSoundType type) {
                                   return DropdownMenuItem<AthanSoundType>(
                                     value: type,
@@ -7615,7 +7440,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         type.label,
                                         style: TextStyle(
                                           fontWeight: FontWeight.w500,
-                                          color: Theme.of(context).colorScheme.onSurface,
+                                          color: colors.dropdown_txt,
                                         ),
                                       ),
                                     ),
@@ -7639,10 +7464,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                          color: colors.primarycontainer_bg,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                            color: colors.primarycontainer_txt,
                             width: 1,
                           ),
                         ),
@@ -7687,7 +7512,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           style: TextStyle(
                                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                                             fontWeight: FontWeight.w600,
-                                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                                            color: colors.primarycontainer_txt,
                                           ),
                                         ),
                                         IconButton(
@@ -7701,7 +7526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             });
                                           },
                                           icon: const Icon(Icons.refresh),
-                                          color: Theme.of(context).colorScheme.primary,
+                                          color: colors.primarycontainer_txt,
                                           tooltip: 'Refresh scheduled notifications',
                                         ),
                                       ],
@@ -7711,14 +7536,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
-                                          color: Theme.of(context).colorScheme.errorContainer,
+                                          color: colors.error_bg,
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           'Error: ${snapshot.error}',
                                           style: TextStyle(
                                             fontSize: ResponsiveSizes(context).bodySize,
-                                            color: Theme.of(context).colorScheme.error,
+                                            color: colors.error_txt,
                                           ),
                                         ),
                                       )
@@ -7727,28 +7552,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         '  No notifications scheduled',
                                         style: TextStyle(
                                           fontSize: ResponsiveSizes(context).settingLabelSize,
-                                          color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.6),
+                                          color: colors.secondarycontainer_subtxt,
                                         ),
                                       )
                                     else
                                       Container(
                                         decoration: BoxDecoration(
-                                          border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                                          border: Border.all(color: Theme.of(context).colorScheme.primary),
                                           borderRadius: BorderRadius.circular(8),
-                                          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.1),
+                                          color: colors.primarycontainer_bg,
                                         ),
                                         child: ListView.separated(
                                           shrinkWrap: true,
                                           physics: const NeverScrollableScrollPhysics(),
-                                          itemCount: pendingNotifications.where((n) => n['type'] != 'reminder_killer').length,
+                                          itemCount: pendingNotifications.length,
                                           separatorBuilder: (_, __) => Divider(
                                             height: 1,
-                                            color: Theme.of(context).colorScheme.outlineVariant,
+                                            color: colors.border,
                                           ),
                                           itemBuilder: (context, index) {
-                                    // Filter out killer notifications
-                                    final filteredNotifications = pendingNotifications.where((n) => n['type'] != 'reminder_killer').toList();
-                                    final notif = filteredNotifications[index];
+                                    // Show all notifications including killer notifications
+                                    final notif = pendingNotifications[index];
                                     final scheduledTimeMs = notif['scheduledTime'] as int;
                                     
                                     // Convert epoch to timezone-aware DateTime using device timezone
@@ -7757,8 +7581,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     
                                     final timeStr = '${scheduledTime.hour.toString().padLeft(2, '0')}:${scheduledTime.minute.toString().padLeft(2, '0')}';
                                     final bgColor = index.isEven
-                                        ? Theme.of(context).colorScheme.surface
-                                        : Theme.of(context).colorScheme.surfaceContainer;
+                                        ? colors.search_odd
+                                        : colors.search_even;
                                     
                                     // Get notification metadata
                                     final prayerName = notif['prayer'] as String? ?? 'Unknown';
@@ -7769,7 +7593,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     
                                     // Get icon and color
                                     final notificationIcon = _getNotificationIcon(notificationState);
-                                    final notificationColor = _getNotificationIconColor(context, notificationState);
                                     final dateStr = '${scheduledTime.year}-${scheduledTime.month.toString().padLeft(2, '0')}-${scheduledTime.day.toString().padLeft(2, '0')}';
                                     
                                     // Build display name: show "Prayer Name Reminder" for reminder type, just prayer name for athan
@@ -7790,19 +7613,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                   TextSpan(
                                                     children: [
                                                       TextSpan(text: displayName),
-                                                      if (typeLabel.isNotEmpty) ...[const TextSpan(text: ' '), TextSpan(text: typeLabel, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.5)))],
+                                                      if (typeLabel.isNotEmpty) ...[const TextSpan(text: ' '), TextSpan(text: typeLabel, style: TextStyle(color: colors.secondarycontainer_txt))],
                                                     ],
                                                   ),
                                                   style: TextStyle(
                                                     fontWeight: FontWeight.w600,
-                                                    fontSize: ResponsiveSizes(context).settingLabelSize,
+                                                    fontSize: ResponsiveSizes(context).settingLabelSize, color: colors.primarycontainer_txt
                                                   ),
                                                 ),
                                                 Text(
                                                   '$dateStr $timeStr • ${notificationState.label}',
                                                   style: TextStyle(
                                                     fontSize: ResponsiveSizes(context).bodySize,
-                                                    color: Theme.of(context).colorScheme.primary.withAlpha(160),
+                                                    color: colors.secondarycontainer_subtxt,
                                                   ),
                                                 ),
                                               ],
@@ -7811,7 +7634,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           Icon(
                                             notificationIcon,
                                             size: 18,
-                                            color: notificationColor,
+                                            color: colors.primarycontainer_txt,
                                           ),
                                         ],
                                       ),
@@ -7841,10 +7664,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // Parent Rank: "Theme" - Independent parent section, manages theme mode
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                      color: colors.primarycontainer_bg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_txt,
                         width: 1,
                       ),
                     ),
@@ -7857,7 +7680,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(
                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                            color: colors.primarycontainer_txt,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -7865,8 +7688,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => setState(() => _showThemeDropdown = !_showThemeDropdown),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
-                              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                              color: colors.HLdropdown_bg,
+                              border: Border.all(color: colors.dropdown_txt),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -7880,7 +7703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Icon(
                                   _showThemeDropdown ? Icons.arrow_drop_up : Icons.arrow_drop_down,
                                   size: 20,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color: colors.HLdropdown_txt,
                                 ),
                               ],
                             ),
@@ -7890,7 +7713,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
+                              border: Border.all(color: colors.dropdown_txt),
                               borderRadius: BorderRadius.only(
                                 bottomLeft: Radius.circular(8),
                                 bottomRight: Radius.circular(8),
@@ -7910,21 +7733,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Container(
                                     width: double.infinity,
                                     color: _themeModePref == 'system'
-                                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-                                        : getTextInputPromptColor(context),
+                                        ? colors.HLdropdown_bg
+                                        : colors.dropdown_bg,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     child: Text(
                                       'System (follow device)',
                                       style: TextStyle(
                                         fontSize: ResponsiveSizes(context).settingLabelSize,
                                         color: _themeModePref == 'system'
-                                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                                            : Theme.of(context).colorScheme.onSurface,
+                                            ? colors.HLdropdown_txt
+                                            : colors.dropdown_txt,
                                       ),
                                     ),
                                   ),
                                 ),
-                                Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                                Divider(height: 1, color: colors.dropdown_txt),
                                 InkWell(
                                   onTap: () {
                                     setState(() {
@@ -7936,21 +7759,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Container(
                                     width: double.infinity,
                                     color: _themeModePref == 'light'
-                                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-                                        : getTextInputPromptColor(context),
+                                        ? colors.HLdropdown_bg
+                                        : colors.dropdown_bg,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     child: Text(
                                       'Light',
                                       style: TextStyle(
                                         fontSize: ResponsiveSizes(context).settingLabelSize,
                                         color: _themeModePref == 'light'
-                                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                                            : Theme.of(context).colorScheme.onSurface,
+                                            ? colors.HLdropdown_txt
+                                            : colors.dropdown_txt,
                                       ),
                                     ),
                                   ),
                                 ),
-                                Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                                Divider(height: 1, color: colors.dropdown_txt),
                                 InkWell(
                                   onTap: () {
                                     setState(() {
@@ -7962,16 +7785,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Container(
                                     width: double.infinity,
                                     color: _themeModePref == 'dark'
-                                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-                                        : getTextInputPromptColor(context),
+                                        ? colors.HLdropdown_bg
+                                        : colors.dropdown_bg,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     child: Text(
                                       'Dark',
                                       style: TextStyle(
                                         fontSize: ResponsiveSizes(context).settingLabelSize,
                                         color: _themeModePref == 'dark'
-                                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                                            : Theme.of(context).colorScheme.onSurface,
+                                            ? colors.HLdropdown_txt
+                                            : colors.dropdown_txt,
                                       ),
                                     ),
                                   ),
@@ -7986,10 +7809,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // Parent Rank: "Hue" - Independent parent section, manages color hue selection
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+                      color: colors.primarycontainer_bg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                        color: colors.primarycontainer_txt,
                         width: 1,
                       ),
                     ),
@@ -8002,90 +7825,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(
                             fontSize: ResponsiveSizes(context).settingHeaderSize,
                             fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                            color: colors.primarycontainer_txt,
                           ),
                         ),
                         const SizedBox(height: 8),
                         // Hue Slider
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Slider(
-                                    value: _primaryHue,
-                                    min: 0,
-                                    max: 360,
-                                    divisions: 36,
-                                    label: _primaryHue.round().toString(),
-                                    onChanged: (v) {
-                                      setState(() => _primaryHue = v);
-                                      _detectChanges();
-                                    },
-                                    activeColor: Theme.of(context).colorScheme.primary,
-                                  ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderThemeData(
+                                  trackHeight: 4,
                                 ),
-                                const SizedBox(width: 12),
-                                Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: HSLColor.fromAHSL(1.0, _primaryHue % 360, 0.72, 0.45).toColor(),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                                  ),
+                                child: Slider(
+                                  value: _primaryHue,
+                                  min: 0,
+                                  max: 360,
+                                  divisions: 36,
+                                  label: _primaryHue.round().toString(),
+                                  onChanged: (v) {
+                                    setState(() => _primaryHue = v);
+                                    _detectChanges();
+                                  },
+                                  activeColor: colors.button_on,
                                 ),
-                              ],
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: HSLColor.fromAHSL(1.0, _primaryHue % 360, 0.72, 0.45).toColor(),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: colors.pure),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        // Widget Background Transparency Slider
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-                              width: 1,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Parent Rank: "Widget Background Opacity" - Independent parent section
+                  Container(
+                    decoration: BoxDecoration(
+                      color: colors.primarycontainer_bg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: colors.primarycontainer_txt,
+                        width: 1,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Widget Background Opacity',
+                          style: TextStyle(
+                            fontSize: ResponsiveSizes(context).settingHeaderSize,
+                            fontWeight: FontWeight.w600,
+                            color: colors.primarycontainer_txt,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Slider(
+                                value: _widgetBgTransparency,
+                                min: 0.0,
+                                max: 1.0,
+                                divisions: 20,
+                                label: (_widgetBgTransparency * 100).toStringAsFixed(0),
+                                onChanged: (v) {
+                                  setState(() => _widgetBgTransparency = v);
+                                  _detectChanges();
+                                },
+                                activeColor: colors.button_on,
+                              ),
                             ),
-                          ),
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Widget Background Opacity',
-                                style: TextStyle(
-                                  fontSize: ResponsiveSizes(context).settingHeaderSize,
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Slider(
-                                      value: _widgetBgTransparency,
-                                      min: 0.0,
-                                      max: 1.0,
-                                      divisions: 10,
-                                      label: '${(_widgetBgTransparency * 100).toStringAsFixed(0)}%',
-                                      onChanged: (v) {
-                                        setState(() => _widgetBgTransparency = v);
-                                        _detectChanges();
-                                      },
-                                      activeColor: Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
                       ],
                     ),
@@ -8103,7 +7927,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             SnackBar(content: Text('Developer menu $status')),
                           );
                         },
-                        child: Card(
+                        child: 
+                         Card(
+                          color: colors.surface_bg,
                           child: Padding(
                             padding: EdgeInsets.all(responsive.spacingM),
                             child: Column(
@@ -8114,6 +7940,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: responsive.headingSize,
+                                    color: colors.surface_txt,
                                   ),
                                 ),
                                 SizedBox(height: responsive.spacingS),
@@ -8141,8 +7968,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Text(
                                     'GitHub Repository',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color: colors.link_txt,
                                       decoration: TextDecoration.underline,
+                                      decorationColor: colors.link_txt,
                                       fontSize: responsive.bodySize,
                                     ),
                                   ),
@@ -8155,12 +7983,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: responsive.headingSize,
+                                    color: colors.surface_txt,
                                   ),
                                 ),
                                 SizedBox(height: responsive.spacingS),
                                 Text(
-                                  'App Version: 1.0.1',
-                                  style: TextStyle(fontSize: responsive.bodySize),
+                                  'Prayer Times 1.0.2',
+                                  style: TextStyle(fontSize: responsive.bodySize,
+                                      color: colors.surface_subtxt),
                                 ),
 
                               ],
@@ -8281,6 +8111,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                             channelDescription: 'Notifications for prayer times',
                                                             importance: Importance.max,
                                                             priority: Priority.max,
+                                                            icon: 'ic_notification',
                                                             enableVibration: enableVibration,
                                                             playSound: true,
                                                             enableLights: true,
@@ -8324,6 +8155,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       foregroundColor: Theme.of(context).colorScheme.onTertiary,
                                     ),
                                     child: const Text('Test Reminder System (Two-Notification)'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: _testTimeoutAfterNotification,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.purple,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: const Text('Test timeoutAfter (2sec delay, 3sec timeout)'),
                                   ),
                                   const SizedBox(height: 8),
                                   ElevatedButton(
@@ -8665,6 +8505,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     },
                                     child: const Text('Test Offline Calculation'),
                                   ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        Position? pos = await LocationService.getOneOffPosition();
+
+                                        if (pos != null) {
+                                          debugPrint("Coordinates Found: ${pos.latitude}, ${pos.longitude}");
+                                          if (!mounted) return;
+                                          messenger.showSnackBar(
+                                            SnackBar(content: Text('Location: ${pos.latitude}, ${pos.longitude}')),
+                                          );
+                                        } else {
+                                          debugPrint("User denied location or GPS is off.");
+                                          if (!mounted) return;
+                                          messenger.showSnackBar(
+                                            const SnackBar(content: Text('Location permission denied or GPS is off')),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        debugPrint('Error getting location: $e');
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(content: Text('Error: $e')),
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue.shade700,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: const Text('Test Location'),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Divider(thickness: 2),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'City Lookup (Manual Coordinates)',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _CityLookupTester(),
                                 ],
                               ),
                             ),
@@ -8681,10 +8564,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary.withValues(
-                  alpha: _settingsChanged ? 1.0 : 0.4,
-                ),
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                backgroundColor: _settingsChanged ? colors.button_on : colors.button_off,
+                foregroundColor: _settingsChanged ? colors.button_off : colors.button_on,
               ),
               onPressed: _settingsChanged ? () async {
                 // Save all settings (this will reschedule notifications and pop)
@@ -8696,6 +8577,126 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ============================================================================
+// CITY LOOKUP TESTER WIDGET
+// ============================================================================
+
+class _CityLookupTester extends StatefulWidget {
+  const _CityLookupTester();
+
+  @override
+  State<_CityLookupTester> createState() => _CityLookupTesterState();
+}
+
+class _CityLookupTesterState extends State<_CityLookupTester> {
+  final latController = TextEditingController();
+  final lonController = TextEditingController();
+  String resultText = '';
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    latController.dispose();
+    lonController.dispose();
+    super.dispose();
+  }
+
+  void _findClosestCity() async {
+    if (latController.text.isEmpty || lonController.text.isEmpty) {
+      setState(() => resultText = 'Please enter both latitude and longitude');
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      final lat = double.parse(latController.text);
+      final lon = double.parse(lonController.text);
+      final lookup = CityLookupService();
+      await lookup.init(); // Ensure data is loaded
+      final city = lookup.findClosestCity(lat, lon, ApiService.ministrycityIds);
+
+      if (city != null) {
+        setState(() {
+          resultText =
+              'City: ${city['latin']}\n'
+              'Arabic: ${city['arabic']}\n'
+              'Coordinates: ${city['lat']}, ${city['lon']}\n'
+              'Ministry ID: ${city['ministry_id']}\n'
+              'Distance²: ${(city['distance_sq'] as double).toStringAsFixed(2)}';
+        });
+        debugPrint('[CityLookup] Found: ${city['latin']} (Ministry ID: ${city['ministry_id']})');
+      } else {
+        setState(() => resultText = 'No city found');
+      }
+    } catch (e) {
+      setState(() => resultText = 'Error: $e');
+      debugPrint('[CityLookup] Error: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(
+          controller: latController,
+          decoration: const InputDecoration(
+            labelText: 'Latitude',
+            hintText: '33.5731',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: lonController,
+          decoration: const InputDecoration(
+            labelText: 'Longitude',
+            hintText: '-7.5898',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: isLoading ? null : _findClosestCity,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green.shade700,
+            foregroundColor: Colors.white,
+          ),
+          child: isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Find Closest City'),
+        ),
+        if (resultText.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.grey.shade50,
+            ),
+            child: Text(
+              resultText,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -8716,6 +8717,7 @@ Future<void> showShortAthanNotification({
       channelDescription: 'Short athan notification (4 seconds)',
       importance: Importance.max,
       priority: Priority.high,
+      icon: 'ic_notification',
       fullScreenIntent: false,
       ongoing: false,
       enableVibration: true,
@@ -8759,6 +8761,7 @@ Future<void> showNormalAthanNotification({
       channelDescription: 'Full athan notification with dismiss button',
       importance: Importance.max,
       priority: Priority.high,
+      icon: 'ic_notification',
       fullScreenIntent: true,
       ongoing: true,
       enableVibration: true,

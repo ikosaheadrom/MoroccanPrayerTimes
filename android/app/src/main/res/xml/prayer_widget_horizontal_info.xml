@@ -6,7 +6,7 @@
     android:initialLayout="@layout/prayer_widget_horizontal"
     android:widgetCategory="home_screen"
     android:description="@string/widget_description_horizontal"
-    android:previewImage="@mipmap/ic_launcher"
+    android:previewImage="@drawable/widget_preview_horizontal"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="3"
     android:targetCellHeight="2" />

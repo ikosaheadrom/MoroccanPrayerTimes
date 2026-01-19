@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_config.dart';
 
 /// Schedules reminder notifications (prayer time - X minutes)
@@ -16,20 +17,31 @@ class ReminderNotificationScheduler {
     required tz.TZDateTime prayerTime,
     required int reminderMinutes,
     required NotificationState notificationState,
+    bool enableCountdownTimer = false,
   }) async {
     try {
       debugPrint('$_debugTag Scheduling reminder for $prayerName at $reminderTime');
+      
+      // Validate that prayer time is after reminder time
+      if (!prayerTime.isAfter(reminderTime)) {
+        debugPrint('$_debugTag ✗ Invalid reminder times - prayer time must be after reminder time');
+        return;
+      }
 
       final channelId = getReminderChannelId(notificationState);
       final reminderId = ('${prayerName}_reminder_${reminderTime.day}${reminderTime.month}').hashCode;
-      final killerId = ('${prayerName}_killer_${reminderTime.day}${reminderTime.month}').hashCode;
       final enableVibration = notificationState != NotificationState.silent;
       final playSound = notificationState == NotificationState.full;
+
+      // Get reminder color from preferences (less saturated than athan)
+      final prefs = await SharedPreferences.getInstance();
+      final hue = prefs.getDouble('primaryHue') ?? 260.0;
+      final reminderColor = HSLColor.fromAHSL(1.0, hue, 0.45, 0.55).toColor();
 
       // Schedule NOTIFICATION #1: Visual Timer with Chronometer
       await plugin.zonedSchedule(
         reminderId,
-        '🕐 Reminder: $prayerName in $reminderMinutes minutes',
+        'Reminder: $prayerName in $reminderMinutes minutes',
         'Get ready for $prayerName',
         reminderTime,
         NotificationDetails(
@@ -39,9 +51,10 @@ class ReminderNotificationScheduler {
             channelDescription: 'Countdown timer notifications',
             importance: Importance.max,
             priority: Priority.max,
+            icon: 'ic_notification',
             enableLights: true,
             tag: 'reminder_$prayerName',
-            color: Colors.blue,
+            color: reminderColor,
             // Native Chronometer countdown
             usesChronometer: true,
             chronometerCountDown: true,
@@ -49,6 +62,8 @@ class ReminderNotificationScheduler {
             showWhen: true,
             playSound: playSound,
             enableVibration: enableVibration,
+            // Auto-dismiss countdown notification at prayer time (after countdown duration)
+            timeoutAfter: Duration(minutes: reminderMinutes).inMilliseconds,
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,
@@ -63,53 +78,11 @@ class ReminderNotificationScheduler {
           'prayer': prayerName,
           'scheduledTime': reminderTime.millisecondsSinceEpoch,
           'state': notificationState.value,
-          'hasCountdown': true,
+          'hasCountdown': enableCountdownTimer,
         }),
       );
 
       debugPrint('$_debugTag ✓ Successfully scheduled reminder countdown for $prayerName');
-
-      // Schedule NOTIFICATION #2: Killer (removes Chronometer at prayer time - silent)
-      await plugin.zonedSchedule(
-        killerId, // DIFFERENT ID - uses separate notification ID
-        '🕌 $prayerName',
-        'Time for prayer',
-        prayerTime,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'prayer_warnings_channel_silent',
-            'Prayer Warnings (Silent)',
-            channelDescription: 'Silent killer notification',
-            importance: Importance.high,
-            priority: Priority.high,
-            enableLights: true,
-            tag: 'reminder_$prayerName',
-            color: Colors.blue,
-            usesChronometer: false,
-            chronometerCountDown: false,
-            showWhen: false,
-            timeoutAfter: 1,
-            playSound: false,
-            enableVibration: false,
-          ),
-          iOS: const DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: false,
-            presentSound: false,
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.alarmClock,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        payload: jsonEncode({
-          'type': 'reminder_killer',
-          'prayer': prayerName,
-          'scheduledTime': prayerTime.millisecondsSinceEpoch,
-          'state': notificationState.value,
-          'hasCountdown': false,
-        }),
-      );
-
-      debugPrint('$_debugTag ✓ Successfully scheduled killer notification for $prayerName');
     } catch (e) {
       debugPrint('$_debugTag ✗ Failed to schedule reminder for $prayerName: $e');
       rethrow;
@@ -125,6 +98,7 @@ class ReminderNotificationScheduler {
     required tz.Location timezone,
     bool useAdvancedControl = false,
     Map<String, dynamic> reminderStatesMap = const {},
+    bool enableCountdownTimer = false,
   }) async {
     int scheduledCount = 0;
     final now = tz.TZDateTime.now(timezone);
@@ -183,6 +157,7 @@ class ReminderNotificationScheduler {
           prayerTime: prayerDateTime,
           reminderMinutes: reminderMinutes,
           notificationState: reminderNotificationState,
+          enableCountdownTimer: enableCountdownTimer,
         );
         scheduledCount++;
       } catch (e) {
