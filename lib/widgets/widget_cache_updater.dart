@@ -80,7 +80,10 @@ class WidgetCacheUpdater {
   /// Useful when prayer times are returned as `Map<String, String>`.
   static Future<bool> updateCacheWithPrayerTimesMap(Map<String, String> times, {String? sourceOverride}) async {
     try {
+      debugPrint('$_debugTag ═════════════════════════════════════════');
       debugPrint('$_debugTag Updating widget cache with prayer times map...');
+      debugPrint('$_debugTag   sourceOverride: $sourceOverride');
+      debugPrint('$_debugTag ═════════════════════════════════════════');
       
       final prefs = await SharedPreferences.getInstance();
       
@@ -92,8 +95,10 @@ class WidgetCacheUpdater {
       final widgetBgTransparency = prefs.getDouble('widgetBgTransparency') ?? 1.0;
       final adhanLatitude = prefs.getString('adhanLatitude') ?? '';
       final adhanLongitude = prefs.getString('adhanLongitude') ?? '';
+      final isOfflineMode = prefs.getBool('isOfflineMode') ?? false;
       
       debugPrint('$_debugTag [DEBUG-MAP] primaryHue from prefs: $primaryHue, themeMode: $themeMode');
+      debugPrint('$_debugTag [DEBUG-MAP] isOfflineMode: $isOfflineMode, adhanLatitude: $adhanLatitude, adhanLongitude: $adhanLongitude');
       
       // Use sourceOverride if provided, otherwise use sourceIndex
       final sourceLabel = sourceOverride ?? _getSourceLabel(sourceIndex);
@@ -110,6 +115,7 @@ class WidgetCacheUpdater {
       }
       
       debugPrint('$_debugTag Source: $sourceLabel, Location: $location, Hue: $primaryHue');
+      debugPrint('$_debugTag [DEBUG-MAP] SAVING SOURCE AS: "$sourceLabel"');
       
       // Save to widget cache
       final success = await _cacheService.saveWidgetCache(

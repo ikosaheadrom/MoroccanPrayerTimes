@@ -27,6 +27,7 @@ import 'utils/responsive_sizes.dart';
 import 'utils/app_colors_streamlined.dart';
 import 'pages/prayer_screen_ui.dart';
 import 'pages/calendar_screen_ui.dart';
+import 'pages/workmanager_jobs_viewer_ui.dart';
 
 // Global theme notifier to allow live theme changes from Settings
 /// logic as prayer/reminder scheduling so behavior matches production paths.
@@ -3018,6 +3019,20 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
     await _loadTimes();
   }
 
+  /// Check if device has internet connectivity
+  /// Returns true if connected, false otherwise
+  Future<bool> _hasInternetConnection() async {
+    try {
+      // Try to reach a reliable DNS server (Google's 8.8.8.8)
+      final result = await InternetAddress.lookup('8.8.8.8');
+      // If we get here, there's internet connectivity
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      // No internet connection
+      return false;
+    }
+  }
+
   Future<void> _loadTimes() async {
     // Load selected city from SharedPreferences
     final prefs = await SharedPreferences.getInstance();
@@ -3077,84 +3092,138 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
       // If using Ministry, follow the exact flow: Parse HTML → Update Cache → Retrieve from Cache → Display
       if (useMinistry) {
         debugPrint('[_loadTimes] → Ministry source enabled, following cache flow...');
-        try {
-          // Step 1: Parse HTML from Ministry API
-          final apiService = ApiService();
-          debugPrint('[_loadTimes] Step 1: Parsing HTML from Ministry API (cityName="$selectedCity")');
-          final freshTimes = await apiService.fetchOfficialMoroccanTimes(selectedCity);
-          debugPrint('[_loadTimes] Fresh times from API: Fajr=${freshTimes.fajr}, Dhuhr=${freshTimes.dhuhr}, Maghrib=${freshTimes.maghrib}');
-          
-          if (freshTimes.fajr != 'N/A') {
-            // Step 2: Update cache with parsed data using the CORRECT cache key format
-            // IMPORTANT: Must match the key format used by getDailyPrayerTimes() which is 'daily_prayer_times_'
-            final cacheKey = 'daily_prayer_times_$cityId';
-            final cacheData = {
-              'fajr': freshTimes.fajr,
-              'sunrise': freshTimes.sunrise,
-              'dhuhr': freshTimes.dhuhr,
-              'asr': freshTimes.asr,
-              'maghrib': freshTimes.maghrib,
-              'isha': freshTimes.isha,
-              'timestamp': DateTime.now().millisecondsSinceEpoch,
-            };
-            await prefs.setString(cacheKey, jsonEncode(cacheData));
-            
-            // DEBUG: Verify what was written to cache
-            final writtenValue = prefs.getString(cacheKey);
-            debugPrint('[_loadTimes] Step 2a: ✓ Cache written with key: $cacheKey');
-            debugPrint('[_loadTimes] Step 2b: Written value: $writtenValue');
-            
-            debugPrint('[_loadTimes] Step 2c: Cache content: $cacheData');
-            
-            // Step 3: Retrieve cached data from daily parser
-            debugPrint('[_loadTimes] Step 3: Retrieving cached data from daily parser...');
-            debugPrint('[_loadTimes] Step 3a: Calling getDailyPrayerTimes(cityId=$cityId, cityName=$cityName)');
-            final cachedTimes = await getDailyPrayerTimes(
-              cityId: cityId,
-              cityName: cityName,
+        
+        // Check internet connectivity first
+        final hasInternet = await _hasInternetConnection();
+        
+        if (!hasInternet) {
+          debugPrint('[_loadTimes] ⚠ No internet connection detected, skipping API call and using cache...');
+          // Show warning snackbar that we're using cached data
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('⚠️ No internet connection. Using cached prayer times.'),
+                duration: const Duration(seconds: 4),
+                backgroundColor: Colors.orange.shade700,
+              ),
             );
-            
-            // DEBUG: Log exactly what we got back
-            debugPrint('[_loadTimes] Step 3b: getDailyPrayerTimes returned:');
-            debugPrint('[_loadTimes]   - Fajr: ${cachedTimes['fajr']}');
-            debugPrint('[_loadTimes]   - Sunrise: ${cachedTimes['sunrise']}');
-            debugPrint('[_loadTimes]   - Dhuhr: ${cachedTimes['dhuhr']}');
-            debugPrint('[_loadTimes]   - Asr: ${cachedTimes['asr']}');
-            debugPrint('[_loadTimes]   - Maghrib: ${cachedTimes['maghrib']}');
-            debugPrint('[_loadTimes]   - Isha: ${cachedTimes['isha']}');
-            
-            // Step 4: Display the cached data
-            if (cachedTimes['fajr'] != 'N/A' && cachedTimes['dhuhr'] != 'N/A') {
-              debugPrint('[_loadTimes] Step 4: ✓ Valid cached data, creating PrayerTimes object');
-              
-              // DEBUG: Create the object and log what it contains
-              times = PrayerTimes(
-                fajr: cachedTimes['fajr'] ?? 'N/A',
-                sunrise: cachedTimes['sunrise'] ?? 'N/A',
-                dhuhr: cachedTimes['dhuhr'] ?? 'N/A',
-                asr: cachedTimes['asr'] ?? 'N/A',
-                maghrib: cachedTimes['maghrib'] ?? 'N/A',
-                isha: cachedTimes['isha'] ?? 'N/A',
-              );
-              timesAssigned = true;
-              
-              debugPrint('[_loadTimes] Step 4a: PrayerTimes object created:');
-              debugPrint('[_loadTimes]   - Fajr: ${times.fajr}');
-              debugPrint('[_loadTimes]   - Dhuhr: ${times.dhuhr}');
-              debugPrint('[_loadTimes]   - Maghrib: ${times.maghrib}');
-              debugPrint('[_loadTimes] Step 4b: Ready for display');
-            } else {
-              debugPrint('[_loadTimes] Step 4 failed: Cache returned N/A, using API data directly');
-              debugPrint('[_loadTimes] Step 4a: Creating PrayerTimes from freshTimes:');
-              debugPrint('[_loadTimes]   - Fajr: ${freshTimes.fajr}');
-              debugPrint('[_loadTimes]   - Dhuhr: ${freshTimes.dhuhr}');
-              times = freshTimes;
-              timesAssigned = true;
-            }
           }
-        } catch (e) {
-          debugPrint('[_loadTimes] Failed to process Ministry data: $e, will use existing cache');
-          await _showSilentErrorNotification('Ministry API', e.toString());
+        } else {
+          try {
+            // Step 1: Parse HTML from Ministry API (only if internet available)
+            final apiService = ApiService();
+            debugPrint('[_loadTimes] Step 1: Parsing HTML from Ministry API (cityName="$selectedCity")');
+            final freshTimes = await apiService.fetchOfficialMoroccanTimes(selectedCity);
+            debugPrint('[_loadTimes] Fresh times from API: Fajr=${freshTimes.fajr}, Dhuhr=${freshTimes.dhuhr}, Maghrib=${freshTimes.maghrib}');
+            
+            if (freshTimes.fajr != 'N/A') {
+              // Step 2: Update cache with parsed data using the CORRECT cache key format
+              // IMPORTANT: Must match the key format used by getDailyPrayerTimes() which is 'daily_prayer_times_'
+              final cacheKey = 'daily_prayer_times_$cityId';
+              final cacheData = {
+                'fajr': freshTimes.fajr,
+                'sunrise': freshTimes.sunrise,
+                'dhuhr': freshTimes.dhuhr,
+                'asr': freshTimes.asr,
+                'maghrib': freshTimes.maghrib,
+                'isha': freshTimes.isha,
+                'timestamp': DateTime.now().millisecondsSinceEpoch,
+              };
+              await prefs.setString(cacheKey, jsonEncode(cacheData));
+              
+              // DEBUG: Verify what was written to cache
+              final writtenValue = prefs.getString(cacheKey);
+              debugPrint('[_loadTimes] Step 2a: ✓ Cache written with key: $cacheKey');
+              debugPrint('[_loadTimes] Step 2b: Written value: $writtenValue');
+              
+              debugPrint('[_loadTimes] Step 2c: Cache content: $cacheData');
+              
+              // Step 3: Retrieve cached data from daily parser
+              debugPrint('[_loadTimes] Step 3: Retrieving cached data from daily parser...');
+              debugPrint('[_loadTimes] Step 3a: Calling getDailyPrayerTimes(cityId=$cityId, cityName=$cityName)');
+              final cachedTimes = await getDailyPrayerTimes(
+                cityId: cityId,
+                cityName: cityName,
+              );
+              
+              // DEBUG: Log exactly what we got back
+              debugPrint('[_loadTimes] Step 3b: getDailyPrayerTimes returned:');
+              debugPrint('[_loadTimes]   - Fajr: ${cachedTimes['fajr']}');
+              debugPrint('[_loadTimes]   - Sunrise: ${cachedTimes['sunrise']}');
+              debugPrint('[_loadTimes]   - Dhuhr: ${cachedTimes['dhuhr']}');
+              debugPrint('[_loadTimes]   - Asr: ${cachedTimes['asr']}');
+              debugPrint('[_loadTimes]   - Maghrib: ${cachedTimes['maghrib']}');
+              debugPrint('[_loadTimes]   - Isha: ${cachedTimes['isha']}');
+              
+              // Step 4: Display the cached data
+              if (cachedTimes['fajr'] != 'N/A' && cachedTimes['dhuhr'] != 'N/A') {
+                debugPrint('[_loadTimes] Step 4: ✓ Valid cached data, creating PrayerTimes object');
+                
+                // DEBUG: Create the object and log what it contains
+                times = PrayerTimes(
+                  fajr: cachedTimes['fajr'] ?? 'N/A',
+                  sunrise: cachedTimes['sunrise'] ?? 'N/A',
+                  dhuhr: cachedTimes['dhuhr'] ?? 'N/A',
+                  asr: cachedTimes['asr'] ?? 'N/A',
+                  maghrib: cachedTimes['maghrib'] ?? 'N/A',
+                  isha: cachedTimes['isha'] ?? 'N/A',
+                );
+                timesAssigned = true;
+                
+                debugPrint('[_loadTimes] Step 4a: PrayerTimes object created:');
+                debugPrint('[_loadTimes]   - Fajr: ${times.fajr}');
+                debugPrint('[_loadTimes]   - Dhuhr: ${times.dhuhr}');
+                debugPrint('[_loadTimes]   - Maghrib: ${times.maghrib}');
+                debugPrint('[_loadTimes] Step 4b: Ready for display');
+              } else {
+                debugPrint('[_loadTimes] Step 4 failed: Cache returned N/A, using API data directly');
+                debugPrint('[_loadTimes] Step 4a: Creating PrayerTimes from freshTimes:');
+                debugPrint('[_loadTimes]   - Fajr: ${freshTimes.fajr}');
+                debugPrint('[_loadTimes]   - Dhuhr: ${freshTimes.dhuhr}');
+                times = freshTimes;
+                timesAssigned = true;
+              }
+            }
+          } catch (e) {
+            debugPrint('[_loadTimes] ✗ Ministry API failed: $e');
+          }
+        }
+        
+        // If we still don't have times from Ministry, try to load from cache
+        if (!timesAssigned) {
+          debugPrint('[_loadTimes] Attempting fallback: Loading from calendar cache or daily cache...');
+          try {
+            // Try monthly calendar cache first
+            final cachedTimes = await _tryLoadTodayFromCache();
+            
+            if (cachedTimes != null && cachedTimes.fajr != 'N/A') {
+              debugPrint('[_loadTimes] ✓ Loaded today\'s times from cache');
+              times = cachedTimes;
+              timesAssigned = true;
+            } else {
+              // Try daily cache as second fallback
+              debugPrint('[_loadTimes] Calendar cache miss, trying daily parser cache...');
+              final dailyTimes = await getDailyPrayerTimes(
+                cityId: cityId,
+                cityName: cityName,
+              );
+              
+              if (dailyTimes['fajr'] != 'N/A' && dailyTimes['dhuhr'] != 'N/A') {
+                debugPrint('[_loadTimes] ✓ Using daily parser cache data');
+                times = PrayerTimes(
+                  fajr: dailyTimes['fajr'] ?? 'N/A',
+                  sunrise: dailyTimes['sunrise'] ?? 'N/A',
+                  dhuhr: dailyTimes['dhuhr'] ?? 'N/A',
+                  asr: dailyTimes['asr'] ?? 'N/A',
+                  maghrib: dailyTimes['maghrib'] ?? 'N/A',
+                  isha: dailyTimes['isha'] ?? 'N/A',
+                );
+                timesAssigned = true;
+              }
+            }
+          } catch (cacheErr) {
+            debugPrint('[_loadTimes] ✗ Cache fallback failed: $cacheErr');
+          }
         }
       }
       
@@ -3186,18 +3255,34 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
         }
       } else if (!useMinistry && !_isOfflineMode && coordsValid) {
         // Try Adhan API if NOT using Ministry and NOT in offline mode, but have valid coordinates
-        try {
-          debugPrint('[_loadTimes] → Trying Adhan API with coordinates ($latitude, $longitude)');
-          final adhanApiService = ApiService();
-          final adhanTimes = await adhanApiService.fetchMoroccoAlAdhanTimes(latitude, longitude);
-          times = adhanTimes;
-          timesAssigned = true;
-          debugPrint('[_loadTimes] ✓ Loaded from Adhan API');
-          debugPrint('[_loadTimes]   Fajr: ${adhanTimes.fajr}');
-          debugPrint('[_loadTimes]   Dhuhr: ${adhanTimes.dhuhr}');
-          debugPrint('[_loadTimes]   Maghrib: ${adhanTimes.maghrib}');
-        } catch (e) {
-          debugPrint('[_loadTimes] ✗ Adhan API failed: $e, will try daily parser');
+        // Check internet connectivity first
+        final hasInternet = await _hasInternetConnection();
+        
+        if (hasInternet) {
+          try {
+            debugPrint('[_loadTimes] → Trying Adhan API with coordinates ($latitude, $longitude)');
+            final adhanApiService = ApiService();
+            final adhanTimes = await adhanApiService.fetchMoroccoAlAdhanTimes(latitude, longitude);
+            times = adhanTimes;
+            timesAssigned = true;
+            debugPrint('[_loadTimes] ✓ Loaded from Adhan API');
+            debugPrint('[_loadTimes]   Fajr: ${adhanTimes.fajr}');
+            debugPrint('[_loadTimes]   Dhuhr: ${adhanTimes.dhuhr}');
+            debugPrint('[_loadTimes]   Maghrib: ${adhanTimes.maghrib}');
+          } catch (e) {
+            debugPrint('[_loadTimes] ✗ Adhan API failed: $e, will try cache/parser');
+          }
+        } else {
+          debugPrint('[_loadTimes] ⚠ No internet connection, skipping Adhan API call');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('⚠️ No internet connection. Trying cached data...'),
+                duration: const Duration(seconds: 3),
+                backgroundColor: Colors.orange.shade700,
+              ),
+            );
+          }
         }
       }
       
@@ -3300,6 +3385,17 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
           _errorMessage = 'Failed to load prayer times from any source';
           _reloadFailed = true;
         });
+        
+        // Show snackbar error message to user
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('❌ Failed to load prayer times. Please check your internet connection and try again.'),
+              duration: const Duration(seconds: 5),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        }
         return;
       }
 
@@ -3357,6 +3453,29 @@ class _PrayerTimeScreenState extends State<PrayerTimeScreen> {
         
         // Use NotificationManager to schedule notifications
         try {
+          // Cancel old prayer notifications first to prevent duplicates
+          try {
+            final pending = await flutterLocalNotificationsPlugin.pendingNotificationRequests();
+            final prayerNames = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+            
+            for (final notification in pending) {
+              bool isPrayerNotification = false;
+              for (final prayerName in prayerNames) {
+                if (notification.title?.contains(prayerName) ?? false) {
+                  isPrayerNotification = true;
+                  break;
+                }
+              }
+              
+              if (isPrayerNotification) {
+                await flutterLocalNotificationsPlugin.cancel(notification.id);
+                debugPrint('[_loadTimes] Cancelled old prayer notification ID: ${notification.id}');
+              }
+            }
+          } catch (e) {
+            debugPrint('[_loadTimes] Error cancelling old notifications: $e');
+          }
+          
           final globalStateValue = prefs.getInt('notificationState') ?? 2;
           final notificationState = NotificationState.fromValue(globalStateValue);
           final athanSoundTypeValue = prefs.getInt('athanSoundType') ?? 0;
@@ -7988,7 +8107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                                 SizedBox(height: responsive.spacingS),
                                 Text(
-                                  'Prayer Times 1.0.2',
+                                  'Prayer Times 1.0.3',
                                   style: TextStyle(fontSize: responsive.bodySize,
                                       color: colors.surface_subtxt),
                                 ),
@@ -8406,6 +8525,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       final messenger = ScaffoldMessenger.of(context);
                                       try {
                                         messenger.showSnackBar(
+                                          const SnackBar(content: Text('Triggering widget refresh...')),
+                                        );
+                                        await bg_tasks.notifyWidgetToRefresh();
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Widget refresh triggered - check logs')),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(content: Text('Widget refresh error: $e')),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Test Widget Refresh (Manual)'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Scheduling background widget refresh in 5 seconds...')),
+                                        );
+                                        
+                                        // Schedule a background task to refresh widget
+                                        // This goes through WorkManager, simulating the 2 AM refresh
+                                        await Workmanager().registerOneOffTask(
+                                          'background_widget_refresh_test_${DateTime.now().millisecondsSinceEpoch}',
+                                          'background_widget_refresh_test',
+                                          initialDelay: const Duration(seconds: 5),
+                                          backoffPolicy: BackoffPolicy.exponential,
+                                          backoffPolicyDelay: const Duration(minutes: 1),
+                                        );
+                                        
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Background refresh scheduled - will run in 5 seconds')),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(content: Text('Error scheduling background task: $e')),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Test Widget Refresh (Background - 5s)'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Triggering 2 AM widget refresh alarm...')),
+                                        );
+                                        
+                                        // Call Android to trigger the 2 AM widget refresh directly
+                                        const platform = MethodChannel('com.example.pray_time/widget');
+                                        await platform.invokeMethod('triggerWidgetRefreshAlarm');
+                                        
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('2 AM alarm triggered - check logs for [WidgetRefreshReceiver]')),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(content: Text('Error triggering alarm: $e')),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Test 2 AM Widget Refresh (Direct)'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        messenger.showSnackBar(
                                           const SnackBar(content: Text('Testing athan notification with Full state...')),
                                         );
                                         await _testAthanNotificationWithFullState();
@@ -8538,6 +8737,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       foregroundColor: Colors.white,
                                     ),
                                     child: const Text('Test Location'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      if (!mounted) return;
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => const WorkManagerJobsViewerScreen(),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green.shade700,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: const Text('View Scheduled Jobs (WorkManager)'),
                                   ),
                                   const SizedBox(height: 16),
                                   const Divider(thickness: 2),
@@ -8798,6 +9013,191 @@ Future<void> showNormalAthanNotification({
     debugPrint('[Athan] Showed normal athan notification with dismiss button');
   } catch (e, st) {
     debugPrint('[Athan] Error showing normal athan notification: $e\n$st');
+  }
+}
+
+// ============================================================================
+// WORKMANAGER SCHEDULED JOBS VIEWER
+// ============================================================================
+
+/// Screen to view all WorkManager scheduled jobs
+class WorkManagerJobsViewerScreen extends StatefulWidget {
+  const WorkManagerJobsViewerScreen({super.key});
+
+  @override
+  State<WorkManagerJobsViewerScreen> createState() => _WorkManagerJobsViewerState();
+}
+
+class _WorkManagerJobsViewerState extends State<WorkManagerJobsViewerScreen> {
+  late Future<void> _jobsFuture;
+  List<Map<String, dynamic>> scheduledJobs = [];
+  bool isLoading = true;
+  String? errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _jobsFuture = refreshJobs();
+  }
+
+  /// Fetch scheduled jobs from WorkManager
+  Future<void> refreshJobs() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      debugPrint('[WorkManagerViewer] Fetching scheduled jobs...');
+
+      // WorkManager doesn't provide getAllTasks() on Flutter
+      // Show known scheduled tasks instead
+      final jobs = <Map<String, dynamic>>[];
+      
+      final knownTasks = [
+        {
+          'id': 'daily_prayer_refresh',
+          'tags': ['daily_prayer_refresh'],
+          'currentState': 'ENQUEUED',
+          'nextScheduledRun': _getNextScheduleTime('daily'),
+          'attemptNumber': 0,
+        },
+        {
+          'id': 'monthly_calendar_refresh',
+          'tags': ['monthly_calendar_refresh'],
+          'currentState': 'ENQUEUED',
+          'nextScheduledRun': _getNextScheduleTime('monthly'),
+          'attemptNumber': 0,
+        },
+      ];
+      
+      jobs.addAll(knownTasks);
+
+      setState(() {
+        scheduledJobs = jobs;
+        isLoading = false;
+      });
+
+      debugPrint('[WorkManagerViewer] ✓ Successfully loaded ${jobs.length} known tasks');
+    } catch (e, st) {
+      debugPrint('[WorkManagerViewer] ✗ Error fetching jobs: $e');
+      debugPrint('[WorkManagerViewer] Stack: $st');
+
+      setState(() {
+        errorMessage = 'Failed to fetch scheduled jobs: $e';
+        isLoading = false;
+      });
+    }
+  }
+
+  /// Clear execution history for scheduled jobs
+  Future<void> clearHistory() async {
+    try {
+      debugPrint('[WorkManagerViewer] Clearing job execution history...');
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Clear background task execution logs
+      await prefs.remove('lastBackgroundTaskExecution');
+      
+      // Clear per-task execution history if stored
+      await prefs.remove('lastDailyPrayerRefreshExecution');
+      await prefs.remove('lastMonthlyCalendarRefreshExecution');
+      
+      debugPrint('[WorkManagerViewer] ✓ Execution history cleared');
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✓ Execution history cleared'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+      // Refresh the view
+      await refreshJobs();
+    } catch (e, st) {
+      debugPrint('[WorkManagerViewer] ✗ Error clearing history: $e');
+      debugPrint('[WorkManagerViewer] Stack: $st');
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✗ Failed to clear history: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// Get next schedule time for a task
+  String _getNextScheduleTime(String type) {
+    final now = DateTime.now();
+    DateTime nextRun;
+    
+    if (type == 'daily') {
+      // Daily task runs hourly but only executes during 2 AM window
+      // Calculate next 2 AM occurrence
+      nextRun = DateTime(now.year, now.month, now.day, 2, 0, 0);
+      if (nextRun.isBefore(now)) {
+        nextRun = nextRun.add(const Duration(days: 1));
+      }
+    } else {
+      // Monthly task runs daily but only executes when cache expires
+      nextRun = now.add(const Duration(days: 1));
+    }
+    
+    return _formatDateTime(nextRun.millisecondsSinceEpoch);
+  }
+
+  /// Format milliseconds to readable datetime string
+  String _formatDateTime(int? millis) {
+    if (millis == null || millis == 0) return 'N/A';
+
+    try {
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(millis);
+      final now = DateTime.now();
+
+      // If in the future, show relative time
+      if (dateTime.isAfter(now)) {
+        final difference = dateTime.difference(now);
+        if (difference.inMinutes < 1) {
+          return 'In ${difference.inSeconds}s';
+        } else if (difference.inHours < 1) {
+          return 'In ${difference.inMinutes}m';
+        } else if (difference.inDays < 1) {
+          return 'In ${difference.inHours}h';
+        }
+      }
+
+      // Format as: YYYY-MM-DD HH:MM AM/PM
+      final year = dateTime.year;
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+      return '$year-$month-$day ${hour.toString().padLeft(2, '0')}:$minute $period';
+    } catch (e) {
+      return 'Invalid time';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _jobsFuture,
+      builder: (context, snapshot) {
+        final ui = WorkManagerJobsViewerUI(
+          context: context,
+          state: this,
+        );
+        return ui.buildScaffold();
+      },
+    );
   }
 }
 

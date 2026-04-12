@@ -14,6 +14,8 @@
     <!-- Huawei/EMUI specific permissions for widgets -->
     <uses-permission android:name="com.huawei.android.launcher.permission.CHANGE_BADGE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Broadcast permissions (Android 12+) -->
+    <uses-permission android:name="android.permission.SEND_CUSTOM_BROADCAST" />
     
     <!-- Package visibility for URL launcher (Android 11+) -->
     <queries>
@@ -24,6 +26,9 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
         </intent>
     </queries>
     <application
@@ -108,6 +113,16 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Widget refresh receiver triggered by 2 AM alarm -->
+        <receiver
+            android:name=".WidgetRefreshReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.pray_time.WIDGET_REFRESH_ALARM" />
             </intent-filter>
         </receiver>
         

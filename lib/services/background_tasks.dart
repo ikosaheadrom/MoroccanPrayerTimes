@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -20,34 +19,40 @@ const String prayerTimeAlarmTaskPrefix = 'prayer_alarm_'; // prayer_alarm_fajr, 
 Future<void> initializeBackgroundTasks() async {
   debugPrint('[BackgroundTasks] initializeBackgroundTasks called');
   
-  final prefs = await SharedPreferences.getInstance();
-  
-  // Check if tasks have already been initialized
-  final tasksInitialized = prefs.getBool('backgroundTasksInitialized') ?? false;
-  
-  if (tasksInitialized) {
-    debugPrint('[BackgroundTasks] Tasks already initialized, skipping re-registration');
-    return;
-  }
-  
-  debugPrint('[BackgroundTasks] First time initialization - setting up WorkManager');
+  debugPrint('[BackgroundTasks] Setting up WorkManager...');
   
   await Workmanager().initialize(
     callbackDispatcher,
-    isInDebugMode: true,
+    isInDebugMode: false,
   );
 
   debugPrint('[BackgroundTasks] WorkManager initialized');
 
-  // Register daily prayer time refresh at 12:01 AM
+  // ALWAYS re-register tasks to ensure we have the latest configuration
+  // This is important when we update the task logic in new app versions
+  // Always cancel old tasks first
+  try {
+    await Workmanager().cancelByTag(dailyPrayerRefreshTaskName);
+    debugPrint('[BackgroundTasks] Cancelled any existing daily refresh task');
+  } catch (e) {
+    debugPrint('[BackgroundTasks] No daily refresh task to cancel: $e');
+  }
+
+  try {
+    await Workmanager().cancelByTag(monthlyCalendarRefreshTaskName);
+    debugPrint('[BackgroundTasks] Cancelled any existing monthly refresh task');
+  } catch (e) {
+    debugPrint('[BackgroundTasks] No monthly refresh task to cancel: $e');
+  }
+
+  // Register daily prayer time refresh at 2:00 AM
   await registerDailyPrayerRefresh();
 
   // Register monthly calendar refresh
   await registerMonthlyCalendarRefresh();
   
-  // Mark tasks as initialized
-  await prefs.setBool('backgroundTasksInitialized', true);
-  debugPrint('[BackgroundTasks] Background tasks initialization flag set');
+  debugPrint('[BackgroundTasks] Background tasks re-initialized (always fresh on each app start)');
+
 }
 
 /// Callback dispatcher for WorkManager - must be a top-level function
@@ -68,6 +73,16 @@ void callbackDispatcher() {
           await executeMonthlyCalendarRefresh();
           return true;
 
+        case 'background_widget_refresh_test':
+          debugPrint('[BackgroundTasks] ═══════════════════════════════════════════════');
+          debugPrint('[BackgroundTasks] BACKGROUND WIDGET REFRESH TEST - Simulating 2 AM refresh');
+          debugPrint('[BackgroundTasks] ═══════════════════════════════════════════════');
+          // Trigger widget refresh through the same path as daily refresh
+          await notifyWidgetToRefresh();
+          debugPrint('[BackgroundTasks] ✓ Background widget refresh test completed');
+          debugPrint('[BackgroundTasks] Check logs for [WidgetCacheUpdateWorker] to see if Android picked it up');
+          return true;
+
         default:
           // Check if it's a prayer time alarm task (prayer_alarm_fajr, etc)
           if (task.startsWith(prayerTimeAlarmTaskPrefix)) {
@@ -86,14 +101,20 @@ void callbackDispatcher() {
 }
 
 /// Register daily prayer time refresh task at 2:00 AM (when API is updated)
+/// Uses hourly check instead of relying on WorkManager's initial delay calculation
+/// Assumes old tasks have already been cancelled by initializeBackgroundTasks()
 Future<void> registerDailyPrayerRefresh() async {
   try {
-    debugPrint('[BackgroundTasks] Registering daily prayer refresh task for 2:00 AM...');
+    debugPrint('[BackgroundTasks] Registering daily prayer refresh task to run every hour...');
+    
+    // Run every hour and check internally if it's 2 AM window
+    // This is more reliable than trying to use WorkManager's initial delay
+    // WorkManager doesn't always respect calculated initial delays
     await Workmanager().registerPeriodicTask(
       dailyPrayerRefreshTaskName,
       dailyPrayerRefreshTaskName,
-      frequency: const Duration(days: 1),
-      initialDelay: _calculateInitialDelayFor2AM(),
+      frequency: const Duration(hours: 1),
+      initialDelay: const Duration(minutes: 0),
       tag: dailyPrayerRefreshTaskName,
       constraints: Constraints(
         networkType: NetworkType.not_required,
@@ -105,9 +126,9 @@ Future<void> registerDailyPrayerRefresh() async {
       backoffPolicy: BackoffPolicy.exponential,
       backoffPolicyDelay: const Duration(minutes: 15),
     );
-    debugPrint('[BackgroundTasks] Daily prayer refresh task registered successfully');
+    debugPrint('[BackgroundTasks] ✓ Daily prayer refresh task registered successfully (hourly with 2 AM check)');
   } catch (e) {
-    debugPrint('[BackgroundTasks] Failed to register daily task: $e');
+    debugPrint('[BackgroundTasks] ✗ Failed to register daily task: $e');
   }
 }
 
@@ -134,12 +155,12 @@ Future<void> registerMonthlyCalendarRefresh() async {
     await prefs.setString('monthlyRefreshExpiration_$cityId', expirationDate.toIso8601String());
     debugPrint('[BackgroundTasks] Saved monthly refresh expiration: ${expirationDate.toIso8601String()}');
     
-    // Calculate initial delay until expiration date at 00:01 AM
-    final now = DateTime.now();
-    final expirationAtMidnight = DateTime(expirationDate.year, expirationDate.month, expirationDate.day, 0, 1);
-    final initialDelay = expirationAtMidnight.difference(now);
+    // FIX: Always start the periodic task immediately with a short initial delay
+    // The task's internal logic will check the expiration date and only execute when needed
+    // This ensures the task starts running daily, not waiting 30 days before first check
+    const Duration initialDelay = Duration(minutes: 30);
     
-    debugPrint('[BackgroundTasks] Scheduling monthly refresh - initial delay: ${initialDelay.inDays} days');
+    debugPrint('[BackgroundTasks] Scheduling monthly refresh - initial delay: ${initialDelay.inMinutes} minutes (task will check cache expiration daily)');
     
     // Register as PERIODIC task running daily instead of one-off
     // This way it keeps running even after execution and reschedules automatically
@@ -147,7 +168,7 @@ Future<void> registerMonthlyCalendarRefresh() async {
       monthlyCalendarRefreshTaskName,
       monthlyCalendarRefreshTaskName,
       frequency: const Duration(days: 1),
-      initialDelay: initialDelay.isNegative ? Duration.zero : initialDelay,
+      initialDelay: initialDelay,
       tag: monthlyCalendarRefreshTaskName,
       constraints: Constraints(
         networkType: NetworkType.not_required,
@@ -179,15 +200,28 @@ Future<void> cancelAllBackgroundTasks() async {
 
 /// Handle daily prayer time refresh
 /// This method refreshes today's prayer times, updates widget cache, and schedules prayer alarms
-Future<void> _handleDailyPrayerRefresh() async {
+/// NOTE: This runs hourly but only executes actual refresh during 2 AM window
+/// 
+/// Parameters:
+/// - forceShowNotification: If true, always show the notification (useful for testing)
+Future<void> _handleDailyPrayerRefresh({bool forceShowNotification = false}) async {
   debugPrint('[BackgroundTasks] ═════ DAILY PRAYER REFRESH TASK ═════');
-  debugPrint('[BackgroundTasks] Executing daily prayer refresh task at ${DateTime.now()}');
+  final now = DateTime.now();
+  debugPrint('[BackgroundTasks] Executing daily prayer refresh task at $now');
+
+  // Check if we're in the 2 AM window (2:00 - 2:59 AM)
+  // Only execute actual refresh during this window (unless testing)
+  if (now.hour != 2 && !forceShowNotification) {
+    debugPrint('[BackgroundTasks] ⏭ Current hour is ${now.hour}, skipping refresh (only runs at 2:00 AM)');
+    debugPrint('[BackgroundTasks] ═════ END DAILY REFRESH (SKIPPED - NOT 2 AM) ═════');
+    return;
+  }
 
   try {
     final prefs = await SharedPreferences.getInstance();
     
     // Write execution log to SharedPreferences for debugging
-    final executionTime = DateTime.now().toIso8601String();
+    final executionTime = now.toIso8601String();
     await prefs.setString('lastBackgroundTaskExecution', 'Daily refresh at $executionTime');
 
     // Get current city and settings
@@ -208,9 +242,14 @@ Future<void> _handleDailyPrayerRefresh() async {
     final provider = PrayerTimesProvider();
     final result = await provider.getPrayerTimes();
     
+    debugPrint('[BackgroundTasks] ═══════════════════════════════════════════');
     debugPrint('[BackgroundTasks] Got prayer times from provider:');
     debugPrint('[BackgroundTasks]   Source: ${result.sourceUsed}');
     debugPrint('[BackgroundTasks]   Input: ${result.inputSettings}');
+    debugPrint('[BackgroundTasks]   Latitude: ${result.latitude}');
+    debugPrint('[BackgroundTasks]   Longitude: ${result.longitude}');
+    debugPrint('[BackgroundTasks]   CityName: ${result.cityName}');
+    debugPrint('[BackgroundTasks] ═══════════════════════════════════════════');
     
     final dailyTimes = result.times;
     final sourceUsed = result.sourceUsed;
@@ -220,6 +259,11 @@ Future<void> _handleDailyPrayerRefresh() async {
                         dailyTimes['fajr'] != 'N/A' && 
                         dailyTimes['dhuhr'] != 'N/A' && 
                         dailyTimes['maghrib'] != 'N/A';
+    
+    // Initialize scheduling tracking variables
+    bool notificationsScheduledSuccessfully = false;
+    String schedulingStatus = 'Not attempted';
+    String widgetUpdateStatus = 'Not attempted';
     
     if (hasValidData) {
       debugPrint('[BackgroundTasks] ✓ Successfully obtained prayer times from $sourceUsed:');
@@ -237,10 +281,28 @@ Future<void> _handleDailyPrayerRefresh() async {
           sourceOverride: sourceUsed,
         );
         debugPrint('[BackgroundTasks] ✓ Widget cache updated with prayer times');
+        widgetUpdateStatus = 'Widget cache updated';
+        
         // Notify Android widget to refresh immediately
-        await notifyWidgetToRefresh();
+        try {
+          await notifyWidgetToRefresh();
+          widgetUpdateStatus = 'Widget refreshed successfully';
+          debugPrint('[BackgroundTasks] ✓ Widget refresh flag set and notification sent');
+        } catch (e) {
+          debugPrint('[BackgroundTasks] ⚠ Failed to notify widget: $e');
+          widgetUpdateStatus = 'Widget cache updated (refresh failed: $e)';
+        }
       } catch (e) {
         debugPrint('[BackgroundTasks] ⚠ Failed to update widget cache: $e');
+        widgetUpdateStatus = 'Failed to update: $e';
+      }
+      
+      // Cancel old prayer time notifications BEFORE scheduling new ones
+      try {
+        await _cancelOldPrayerNotifications();
+        debugPrint('[BackgroundTasks] ✓ Old prayer notifications cancelled');
+      } catch (e) {
+        debugPrint('[BackgroundTasks] ⚠ Failed to cancel old notifications: $e');
       }
       
       // Schedule prayer time notifications using new NotificationManager
@@ -271,16 +333,11 @@ Future<void> _handleDailyPrayerRefresh() async {
           timezone: timezone,
         );
         debugPrint('[BackgroundTasks] ✓ Prayer time notifications scheduled');
+        notificationsScheduledSuccessfully = true;
+        schedulingStatus = 'Notifications scheduled successfully';
       } catch (e) {
         debugPrint('[BackgroundTasks] ⚠ Failed to schedule notifications: $e');
-      }
-      
-      // Cancel old prayer time notifications before scheduling new ones
-      try {
-        await _cancelOldPrayerNotifications();
-        debugPrint('[BackgroundTasks] ✓ Old prayer notifications cancelled');
-      } catch (e) {
-        debugPrint('[BackgroundTasks] ⚠ Failed to cancel old notifications: $e');
+        schedulingStatus = 'Failed to schedule: $e';
       }
     } else {
       debugPrint('[BackgroundTasks] Daily times returned invalid data (N/A values or empty)');
@@ -293,6 +350,37 @@ Future<void> _handleDailyPrayerRefresh() async {
 
     debugPrint('[BackgroundTasks] ✓ Daily prayer refresh completed at ${DateTime.now()}');
     debugPrint('[BackgroundTasks] ═════ END DAILY REFRESH ═════');
+    
+    // SEND SUCCESS NOTIFICATION (if enabled via devtools OR if force-showing for testing)
+    final showDailyRefreshNotification = forceShowNotification || (prefs.getBool('devShowDailyRefreshNotification') ?? false);
+    if (showDailyRefreshNotification) {
+      final sourceInfo = hasValidData ? sourceUsed : 'Unknown';
+      String notificationMessage;
+      
+      if (hasValidData) {
+        // Format prayer times nicely with line breaks and include scheduling status
+        notificationMessage = 'Fetched from $sourceInfo:\n'
+            'Fajr: ${dailyTimes['fajr']}\n'
+            'Dhuhr: ${dailyTimes['dhuhr']}\n'
+            'Asr: ${dailyTimes['asr']}\n'
+            'Maghrib: ${dailyTimes['maghrib']}\n'
+            'Isha: ${dailyTimes['isha']}\n'
+            'Widget: $widgetUpdateStatus\n'
+            'Scheduling: $schedulingStatus';
+      } else {
+        notificationMessage = 'Failed to fetch valid prayer times\n'
+            'Widget: $widgetUpdateStatus\n'
+            'Scheduling: $schedulingStatus';
+      }
+      
+      await _sendDailyRefreshNotification(
+        result: hasValidData ? (notificationsScheduledSuccessfully ? 'success' : 'partial') : 'partial',
+        message: notificationMessage,
+      );
+      debugPrint('[BackgroundTasks] ✓ Daily refresh notification shown successfully');
+    } else {
+      debugPrint('[BackgroundTasks] Daily refresh notification disabled (enable via devtools or use test button)');
+    }
   } catch (e, st) {
     debugPrint('[BackgroundTasks] ✗ Error in daily refresh: $e');
     debugPrint('[BackgroundTasks] Stack: $st');
@@ -300,6 +388,16 @@ Future<void> _handleDailyPrayerRefresh() async {
     // Still set the reschedule flag so app can handle it
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('needsNotificationReschedule', true);
+    
+    // SEND ERROR NOTIFICATION (if enabled via devtools OR if force-showing for testing)
+    final showDailyRefreshNotification = forceShowNotification || (prefs.getBool('devShowDailyRefreshNotification') ?? false);
+    if (showDailyRefreshNotification) {
+      await _sendDailyRefreshNotification(
+        result: 'failed',
+        message: 'Daily refresh failed: $e\n'
+            'Scheduling: Not attempted (due to refresh failure)',
+      );
+    }
   }
 }
 
@@ -349,10 +447,19 @@ Future<void> _handleMonthlyCalendarRefresh() async {
           final showMonthlyRefreshNotification = prefs.getBool('devShowMonthlyRefreshNotification') ?? false;
           if (showMonthlyRefreshNotification) {
             final daysUntilExpiration = expirationDate.difference(now).inDays;
+            final today = DateTime.now();
+            final todayFormatted = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+            final expirationDateFormatted = '${expirationDate.year}-${expirationDate.month.toString().padLeft(2, '0')}-${expirationDate.day.toString().padLeft(2, '0')}';
+            
+            final skipMessage = 'Today: $todayFormatted\n'
+                'Cache Expires: $expirationDateFormatted\n'
+                'Days Remaining: $daysUntilExpiration\n'
+                'Status: SKIPPED (not expired)';
+            
             await _sendMonthlyRefreshNotification(
               monthNameLatin: 'Cache Valid',
               result: 'skipped',
-              message: 'Cache not expired yet (expires in $daysUntilExpiration days)',
+              message: skipMessage,
             );
           }
           
@@ -556,13 +663,124 @@ Future<void> _handleMonthlyCalendarRefresh() async {
       debugPrint('[BackgroundTasks] ⚠ Could not determine expiration date');
     }
     
-    // SEND NOTIFICATION (if enabled via devtools)
+    // SEND USER NOTIFICATION (always shown, not controlled by devtools toggle)
+    // Check if today is the last day of the Hijri month
+    bool isTodayLastDayOfMonth = false;
+    String? nextMonthNameLatin;
+    
+    if (allDays.isNotEmpty && lastDateISO != null) {
+      try {
+        final lastDate = DateTime.parse(lastDateISO);
+        final today = DateTime.now();
+        
+        // Check if today is the last day of the cached period
+        if (today.year == lastDate.year && 
+            today.month == lastDate.month && 
+            today.day == lastDate.day) {
+          isTodayLastDayOfMonth = true;
+          
+          // Extract next month name from parsed calendar if available
+          final hijriMonthNum = parsedCalendar['hijriMonth'] as String?;
+          if (hijriMonthNum != null) {
+            // Parse the hijri month number and calculate next month
+            final monthNum = int.tryParse(hijriMonthNum.split('/').first);
+            if (monthNum != null) {
+              // Hijri months: 1=Muharram, 2=Safar, ..., 12=Dhul-Hijjah
+              final nextMonth = monthNum == 12 ? 1 : monthNum + 1;
+              final hijriMonthNames = [
+                'Muharram', 'Safar', 'Rabi\' al-Awwal', 'Rabi\' al-Thani',
+                'Jumada al-Awwal', 'Jumada al-Thani', 'Rajab', 'Sha\'ban',
+                'Ramadan', 'Shawwal', 'Dhu al-Qi\'dah', 'Dhu al-Hijjah'
+              ];
+              if (nextMonth >= 1 && nextMonth <= 12) {
+                nextMonthNameLatin = hijriMonthNames[nextMonth - 1];
+              }
+            }
+          }
+          
+          debugPrint('[BackgroundTasks] ✓ Today is the last day of recorded Hijri month');
+          debugPrint('[BackgroundTasks] Next month will be: $nextMonthNameLatin');
+        }
+      } catch (e) {
+        debugPrint('[BackgroundTasks] Error checking if today is last day of month: $e');
+      }
+    }
+    
+    // Determine which user notification to send
+    if (isTodayLastDayOfMonth && nextMonthNameLatin != null) {
+      // Show moon observation notification for next month
+      await _sendUserMonthlyNotification(
+        title: '🌙 Moon Observation',
+        message: 'Waiting for moon sighting to confirm the start of $nextMonthNameLatin',
+      );
+      debugPrint('[BackgroundTasks] ✓ User notification sent: Moon observation for $nextMonthNameLatin');
+    } else if (!isTodayLastDayOfMonth) {
+      // Show "waiting for ministry to update" notification
+      final daysUntilExpiration = cacheExpiresAt?.difference(DateTime.now()).inDays ?? 0;
+      if (daysUntilExpiration > 0) {
+        await _sendUserMonthlyNotification(
+          title: '⏳ Awaiting Update',
+          message: 'Waiting for ministry to update prayer times data. Next check in $daysUntilExpiration day${daysUntilExpiration == 1 ? '' : 's'}.',
+        );
+        debugPrint('[BackgroundTasks] ✓ User notification sent: Waiting for ministry update');
+      }
+    } else {
+      // Successfully fetched new data
+      await _sendUserMonthlyNotification(
+        title: '✓ Calendar Updated',
+        message: 'New $monthNameLatin prayer times data has been fetched and will be ready for moon observation.',
+      );
+      debugPrint('[BackgroundTasks] ✓ User notification sent: New data fetched');
+    }
+    
+    // SEND DIAGNOSTIC NOTIFICATION (if enabled via devtools)
     final showMonthlyRefreshNotification = prefs.getBool('devShowMonthlyRefreshNotification') ?? false;
     if (showMonthlyRefreshNotification) {
+      // Parse dates for notification
+      String firstDateFormatted = 'N/A';
+      String lastDateFormatted = 'N/A';
+      String gregorianMonths = '';
+      
+      if (firstDateISO != null && lastDateISO != null) {
+        try {
+          final firstDate = DateTime.parse(firstDateISO);
+          final lastDate = DateTime.parse(lastDateISO);
+          
+          firstDateFormatted = '${firstDate.year}-${firstDate.month.toString().padLeft(2, '0')}-${firstDate.day.toString().padLeft(2, '0')}';
+          lastDateFormatted = '${lastDate.year}-${lastDate.month.toString().padLeft(2, '0')}-${lastDate.day.toString().padLeft(2, '0')}';
+          
+          // Get month names
+          final monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          final startMonth = '${monthNames[firstDate.month - 1]} ${firstDate.year}';
+          final endMonth = '${monthNames[lastDate.month - 1]} ${lastDate.year}';
+          
+          if (startMonth == endMonth) {
+            gregorianMonths = startMonth;
+          } else {
+            gregorianMonths = '$startMonth - $endMonth';
+          }
+        } catch (e) {
+          debugPrint('[BackgroundTasks] Error parsing dates for notification: $e');
+        }
+      }
+      
+      final today = DateTime.now();
+      final todayFormatted = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final expirationDateFormatted = cacheExpiresAt != null 
+          ? '${cacheExpiresAt.year}-${cacheExpiresAt.month.toString().padLeft(2, '0')}-${cacheExpiresAt.day.toString().padLeft(2, '0')}'
+          : 'N/A';
+      
+      final notificationMessage = 'Today: $todayFormatted\n'
+          'Month: $monthNameLatin\n'
+          'Period: $firstDateFormatted - $lastDateFormatted\n'
+          'Gregorian: $gregorianMonths\n'
+          'Days Parsed: ${allDays.length}\n'
+          'Expires: $expirationDateFormatted';
+      
       await _sendMonthlyRefreshNotification(
         monthNameLatin: monthNameLatin,
         result: 'success',
-        message: 'Fetched $monthNameLatin calendar',
+        message: notificationMessage,
       );
       debugPrint('[BackgroundTasks] ✓ Notification shown successfully');
     } else {
@@ -640,6 +858,12 @@ Future<void> _sendMonthlyRefreshNotification({
           playSound: false,
           enableVibration: false,
           showWhen: true,
+          styleInformation: BigTextStyleInformation(
+            body,
+            contentTitle: title,
+            htmlFormatBigText: false,
+            htmlFormatContent: false,
+          ),
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: false,
@@ -651,6 +875,85 @@ Future<void> _sendMonthlyRefreshNotification({
     debugPrint('[BackgroundTasks] Notification shown successfully');
   } catch (e) {
     debugPrint('[BackgroundTasks] Error sending notification: $e');
+  }
+}
+
+/// Send notification for daily prayer refresh with result status
+/// Parameters:
+/// - result: 'success', 'partial', or 'failed'
+/// - message: Detailed message about what happened
+Future<void> _sendDailyRefreshNotification({
+  required String result,
+  required String message,
+}) async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    
+    debugPrint('[BackgroundTasks] Initializing notification plugin for daily refresh...');
+    // Initialize if needed (for background context)
+    await plugin.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('ic_notification'),
+        iOS: DarwinInitializationSettings(),
+      ),
+      onDidReceiveNotificationResponse: null,
+    );
+    debugPrint('[BackgroundTasks] Notification plugin initialized');
+    
+    // Build title based on result
+    final title = _getDailyRefreshNotificationTitle(result);
+    
+    // Build body with result details
+    final body = '$message\nStatus: ${result.toUpperCase()}';
+    
+    debugPrint('[BackgroundTasks] Showing daily refresh notification - Title: $title, Body: $body');
+    await plugin.show(
+      998, // Notification ID for daily refresh
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'silent_channel',
+          'Silent Updates',
+          channelDescription: 'Silent notifications for background updates',
+          importance: Importance.min,
+          priority: Priority.min,
+          icon: 'ic_notification',
+          silent: true,
+          playSound: false,
+          enableVibration: false,
+          showWhen: true,
+          styleInformation: BigTextStyleInformation(
+            body,
+            contentTitle: title,
+            htmlFormatBigText: false,
+            htmlFormatContent: false,
+          ),
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: false,
+          presentBadge: false,
+          presentSound: false,
+        ),
+      ),
+    );
+    debugPrint('[BackgroundTasks] Daily refresh notification shown successfully');
+  } catch (e) {
+    debugPrint('[BackgroundTasks] Error sending daily refresh notification: $e');
+  }
+}
+
+/// Get notification title for daily refresh based on result status
+String _getDailyRefreshNotificationTitle(String result) {
+  switch (result.toLowerCase()) {
+    case 'success':
+      return '✓ Prayer Times Updated';
+    case 'partial':
+      return '⚠ Prayer Times Incomplete';
+    case 'failed':
+      return '✗ Prayer Times Update Failed';
+    default:
+      return 'Prayer Times Status';
   }
 }
 
@@ -668,20 +971,64 @@ String _getNotificationTitle(String result) {
   }
 }
 
-/// Calculate initial delay for daily task to run at 12:01 AM
-Duration _calculateInitialDelayFor2AM() {
-  final now = DateTime.now();
-  var twoAM = DateTime(now.year, now.month, now.day, 2, 0, 0);
-  
-  // If it's already past 2 AM, schedule for tomorrow at 2 AM
-  if (now.isAfter(twoAM)) {
-    twoAM = twoAM.add(const Duration(days: 1));
+/// Send user-facing notification for monthly calendar refresh
+/// These notifications are always shown (not controlled by devtools toggle)
+/// Parameters:
+/// - title: Notification title
+/// - message: User-friendly message about the calendar status
+Future<void> _sendUserMonthlyNotification({
+  required String title,
+  required String message,
+}) async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    
+    debugPrint('[BackgroundTasks] Initializing notification plugin for user notification...');
+    // Initialize if needed (for background context)
+    await plugin.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('ic_notification'),
+        iOS: DarwinInitializationSettings(),
+      ),
+      onDidReceiveNotificationResponse: null,
+    );
+    debugPrint('[BackgroundTasks] Notification plugin initialized');
+    
+    debugPrint('[BackgroundTasks] Showing user notification - Title: $title, Message: $message');
+    await plugin.show(
+      1000, // Notification ID for user calendar notifications
+      title,
+      message,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'calendar_updates',
+          'Calendar Updates',
+          channelDescription: 'Important calendar and moon observation updates',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: 'ic_notification',
+          silent: false,
+          playSound: true,
+          enableVibration: true,
+          showWhen: true,
+          styleInformation: BigTextStyleInformation(
+            message,
+            contentTitle: title,
+            htmlFormatBigText: false,
+            htmlFormatContent: false,
+          ),
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+    debugPrint('[BackgroundTasks] User notification shown successfully');
+  } catch (e) {
+    debugPrint('[BackgroundTasks] Error sending user notification: $e');
   }
-  
-  final delay = twoAM.difference(now);
-
-  debugPrint('[BackgroundTasks] Daily task will first run in ${delay.inHours}h ${delay.inMinutes % 60}m (at 2:00 AM)');
-  return delay;
 }
 
 /// Get last daily refresh time
@@ -818,9 +1165,13 @@ Future<void> resetBackgroundTasksInitializationFlag() async {
 /// PUBLIC: Execute daily prayer refresh
 /// Called by both WorkManager (periodic task) and test button
 /// This is the single entry point for all daily refresh execution
-Future<void> executeDailyPrayerRefresh() async {
+/// 
+/// Parameters:
+/// - forceShowNotification: If true, always show the notification regardless of devtools setting
+///   This is useful for testing from the debug menu
+Future<void> executeDailyPrayerRefresh({bool forceShowNotification = false}) async {
   try {
-    await _handleDailyPrayerRefresh();
+    await _handleDailyPrayerRefresh(forceShowNotification: forceShowNotification);
   } catch (e, st) {
     debugPrint('[BackgroundTasks] ✗ Error in daily prayer refresh: $e');
     debugPrint('[BackgroundTasks] Stack: $st');
@@ -880,13 +1231,6 @@ Future<void> _handlePrayerTimeAlarm(String taskName) async {
   }
 }
 
-/// Show notification for prayer time alarm
-/// DEPRECATED: Use NotificationManager instead
-@Deprecated('Use NotificationManager instead')
-Future<void> _showPrayerTimeNotification(String prayerName) async {
-  // This function is deprecated. Use NotificationManager instead.
-}
-
 /// Cancel all old prayer time notifications
 /// Prevents duplicate notifications when daily refresh reschedules prayer times
 Future<void> _cancelOldPrayerNotifications() async {
@@ -939,16 +1283,50 @@ Future<void> _cancelOldPrayerNotifications() async {
 /// Get device timezone
 tz.Location _getDeviceTimezone() {
   try {
-    // Try to get system timezone
-    final timeZoneName = DateTime.now().timeZoneName;
-    try {
-      return tz.getLocation(timeZoneName);
-    } catch (e) {
-      debugPrint('[BackgroundTasks] Could not find timezone "$timeZoneName", using UTC');
-      return tz.UTC;
+    // First try to use the explicitly set local timezone
+    final localLocation = tz.local;
+    debugPrint('[BackgroundTasks] Initial tz.local: ${localLocation.name}');
+    
+    // Always try to detect actual timezone regardless (don't just check if UTC)
+    debugPrint('[BackgroundTasks] Attempting timezone detection...');
+    
+    // Get device timezone offset
+    final offset = DateTime.now().timeZoneOffset;
+    debugPrint('[BackgroundTasks] Device offset: ${offset.inHours}h ${offset.inMinutes % 60}m (total minutes: ${offset.inMinutes})');
+    
+    // Try common timezones based on offset
+    final commonTimezones = [
+      'Africa/Casablanca', 'Africa/Cairo', 'Africa/Lagos', 'Africa/Nairobi',
+      'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow', 'Europe/Amsterdam',
+      'Asia/Dubai', 'Asia/Bangkok', 'Asia/Jakarta', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo',
+      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto',
+      'Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane',
+    ];
+    
+    debugPrint('[BackgroundTasks] Checking ${commonTimezones.length} common timezones...');
+    for (final tzName in commonTimezones) {
+      try {
+        final location = tz.getLocation(tzName);
+        final tzTime = tz.TZDateTime.now(location);
+        
+        // Get offset by comparing UTC and TZ time
+        final tzOffset = tzTime.timeZoneOffset;
+        
+        debugPrint('[BackgroundTasks] Testing $tzName: offset = ${tzOffset.inMinutes} minutes (${tzOffset.inHours}h)');
+        
+        if (tzOffset == offset) {
+          debugPrint('[BackgroundTasks] ✓ MATCHED device timezone: $tzName (offset: ${tzOffset.inHours}h)');
+          return location;
+        }
+      } catch (e) {
+        debugPrint('[BackgroundTasks] Failed to check $tzName: $e');
+      }
     }
+    
+    debugPrint('[BackgroundTasks] No match found in common timezones, returning tz.local: ${localLocation.name}');
+    return localLocation;
   } catch (e) {
-    debugPrint('[BackgroundTasks] Error getting device timezone: $e, using UTC');
+    debugPrint('[BackgroundTasks] Error in getDeviceTimezone: $e');
     return tz.UTC;
   }
 }
@@ -983,27 +1361,14 @@ Future<void> testSetCacheExpirationToPast() async {
 }
 
 /// Notify Android widget to refresh after cache update
-/// Sends a broadcast intent that reaches ALL registered widget instances
-/// NOTE: This must work from background isolate, so we use a different approach
+/// The Android side has a 2 AM alarm that automatically refreshes the widget
+/// This method is now simplified since the alarm handles the update
 Future<void> notifyWidgetToRefresh() async {
   try {
-    debugPrint('[BackgroundTasks] Triggering widget refresh via WorkManager...');
-    
-    // Since we're in a background isolate, we can't use MethodChannel.
-    // Instead, we trigger the WidgetCacheUpdateWorker which will read the updated
-    // cache from FlutterSharedPreferences and update the Android widgets.
-    
-    // Get the native method channel to call Android code
-    try {
-      const platform = MethodChannel('com.example.pray_time/widget');
-      await platform.invokeMethod('enqueueWidgetUpdateWorker');
-      debugPrint('[BackgroundTasks] ✓ Widget update worker enqueued via MethodChannel');
-    } catch (e) {
-      debugPrint('[BackgroundTasks] ⚠ MethodChannel failed: $e');
-      // The worker may still run via other mechanisms, but log the failure
-    }
-    
+    debugPrint('[BackgroundTasks] Cache updated successfully. Widget will refresh at next scheduled alarm (2 AM)');
   } catch (e) {
-    debugPrint('[BackgroundTasks] ✗ FAILED to notify widgets: $e');
+    debugPrint('[BackgroundTasks] ✗ Error in notifyWidgetToRefresh: $e');
+    rethrow;
   }
 }
+

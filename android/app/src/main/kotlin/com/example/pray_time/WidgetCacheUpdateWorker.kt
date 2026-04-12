@@ -33,17 +33,15 @@ class WidgetCacheUpdateWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
-            logDebug("Worker started - fetching prayer times")
+            logDebug("WidgetCacheUpdateWorker: Starting")
             
             // Request Dart to fetch fresh prayer times
             val prayerTimesMap = fetchPrayerTimesFromDart()
             
             if (prayerTimesMap.isEmpty()) {
-                logDebug("Worker: Failed to get prayer times - will retry")
+                logDebug("WidgetCacheUpdateWorker: No prayer times found - retrying")
                 return@withContext Result.retry()
             }
-            
-            logDebug("Worker: Got prayer times successfully")
             
             // Save to SharedPreferences for widget to read
             savePrayerTimesToPrefs(prayerTimesMap)
@@ -51,39 +49,52 @@ class WidgetCacheUpdateWorker(
             // Update widget UI
             triggerWidgetUpdate()
             
-            logDebug("Worker: Complete - prayer times updated")
+            // Clear the refresh flag so onUpdate() doesn't keep enqueueing the worker
+            try {
+                val flutterPrefs = applicationContext.getSharedPreferences(
+                    "FlutterSharedPreferences",
+                    android.content.Context.MODE_PRIVATE
+                )
+                flutterPrefs.edit().remove("flutter.widget_refresh_timestamp").apply()
+                logDebug("WidgetCacheUpdateWorker: ✓ Cleared refresh flag")
+            } catch (e: Exception) {
+                logDebug("WidgetCacheUpdateWorker: Could not clear flag: ${e.message}")
+            }
+            
+            logDebug("WidgetCacheUpdateWorker: ✓ Complete")
             Result.success()
             
         } catch (e: Exception) {
-            logDebug("Worker: Error - ${e.message}")
+            logError("WidgetCacheUpdateWorker: Exception", e)
             Result.retry()
         }
     }
 
     /**
      * Fetch prayer times from Dart widget cache system
+     * 
+     * NOTE: The cache should have already been updated by background_tasks.dart
+     * when it called WidgetCacheUpdater.updateCacheWithPrayerTimesMap()
+     * We simply read the already-updated cache here.
      */
     private suspend fun fetchPrayerTimesFromDart(): Map<String, String> {
         return withContext(Dispatchers.IO) {
             try {
-                // Request Dart to fetch fresh times
-                try {
-                    val intent = Intent("com.example.pray_time.REFRESH_WIDGET_CACHE")
-                    intent.setPackage(applicationContext.packageName)
-                    applicationContext.sendBroadcast(intent)
-                    Thread.sleep(3000)  // Wait for Dart to update cache
-                } catch (e: Exception) {
-                    // Continue anyway
-                }
+                // Wait a brief moment to ensure Dart has finished writing the cache
+                Thread.sleep(1000)
                 
-                // Read cached widget data from Dart's SharedPreferences
+                // Read cached widget data from Dart's FlutterSharedPreferences
                 val sharedPreferences = applicationContext.getSharedPreferences(
                     "FlutterSharedPreferences",
                     Context.MODE_PRIVATE
                 )
                 
                 val cacheJson = sharedPreferences.getString("flutter.widget_info_cache", null)
-                    ?: return@withContext emptyMap()
+                
+                if (cacheJson == null) {
+                    logDebug("WidgetCacheUpdateWorker: No cache in FlutterSharedPreferences")
+                    return@withContext emptyMap()
+                }
                 
                 // Parse the JSON
                 val gson = Gson()
@@ -108,6 +119,7 @@ class WidgetCacheUpdateWorker(
                 return@withContext prayerTimes
                 
             } catch (e: Exception) {
+                logError("WidgetCacheUpdateWorker: Error parsing cache", e)
                 return@withContext emptyMap()
             }
         }
@@ -131,20 +143,16 @@ class WidgetCacheUpdateWorker(
             editor.putLong(LAST_UPDATE_TIME_KEY, System.currentTimeMillis())
             editor.apply()
             
-            logDebug("Worker: Saved ${prayerTimesMap.size} items to widget_prefs")
-            
         } catch (e: Exception) {
-            logDebug("Worker: Error saving prefs - ${e.message}")
+            logError("WidgetCacheUpdateWorker: Error saving prefs", e)
         }
     }
 
     /**
-     * Trigger widget UI update
+     * Trigger widget UI update via broadcast
      */
     private fun triggerWidgetUpdate() {
         try {
-            logDebug("──── triggerWidgetUpdate START ────")
-            
             val widgetManager = AppWidgetManager.getInstance(applicationContext)
             
             // Get vertical widget IDs
@@ -153,6 +161,7 @@ class WidgetCacheUpdateWorker(
                 PrayerWidgetProvider::class.java
             )
             val verticalWidgetIds = widgetManager.getAppWidgetIds(componentNameVertical)
+            logDebug("Worker: Found ${verticalWidgetIds.size} vertical widget(s): ${verticalWidgetIds.joinToString(",")}")
             
             // Get horizontal widget IDs
             val componentNameHorizontal = android.content.ComponentName(
@@ -160,32 +169,35 @@ class WidgetCacheUpdateWorker(
                 PrayerWidgetProviderHorizontal::class.java
             )
             val horizontalWidgetIds = widgetManager.getAppWidgetIds(componentNameHorizontal)
+            logDebug("Worker: Found ${horizontalWidgetIds.size} horizontal widget(s): ${horizontalWidgetIds.joinToString(",")}")
             
             // Send broadcast to trigger onUpdate for vertical widgets
             if (verticalWidgetIds.isNotEmpty()) {
-                val intentVertical = Intent(applicationContext, PrayerWidgetProvider::class.java).apply {
-                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                val intentVertical = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                    setClass(applicationContext, PrayerWidgetProvider::class.java)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, verticalWidgetIds)
-                    setPackage(applicationContext.packageName)
                 }
                 applicationContext.sendBroadcast(intentVertical)
+                logDebug("Worker: ✓ Broadcast sent for ${verticalWidgetIds.size} vertical widget(s)")
+            } else {
+                logDebug("WidgetCacheUpdateWorker: No vertical widgets found")
             }
             
             // Send broadcast to trigger onUpdate for horizontal widgets
             if (horizontalWidgetIds.isNotEmpty()) {
-                val intentHorizontal = Intent(applicationContext, PrayerWidgetProviderHorizontal::class.java).apply {
-                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                val intentHorizontal = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                    setClass(applicationContext, PrayerWidgetProviderHorizontal::class.java)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, horizontalWidgetIds)
-                    setPackage(applicationContext.packageName)
                 }
                 applicationContext.sendBroadcast(intentHorizontal)
             }
             
-            logDebug("Worker: Broadcasts sent to update widgets")
-            logDebug("──── triggerWidgetUpdate COMPLETE ────")
+            if (verticalWidgetIds.isEmpty() && horizontalWidgetIds.isEmpty()) {
+                logDebug("WidgetCacheUpdateWorker: ⚠ No widgets found on device")
+            }
             
         } catch (e: Exception) {
-            logError("triggerWidgetUpdate: ✗ Exception while sending broadcast", e)
+            logError("WidgetCacheUpdateWorker: Exception sending broadcast", e)
         }
     }
 

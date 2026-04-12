@@ -95,6 +95,38 @@ class PrayerNotificationScheduler {
       final insistentFlag = 4; // Notification.FLAG_INSISTENT = 4
       final additionalFlagsForAthan = isAthanSound ? Int32List.fromList(<int>[insistentFlag]) : null;
 
+      // Calculate timeout duration - auto-dismiss notification after time until next prayer
+      // For Isha, use 4 hours; for others, use time to next prayer
+      int? timeoutAfterMs;
+      if (prayerName == 'Isha') {
+        timeoutAfterMs = Duration(hours: 4).inMilliseconds;
+      } else if (allPrayerTimes != null) {
+        // Calculate time to next prayer
+        const prayerOrder = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+        final currentIndex = prayerOrder.indexOf(prayerName);
+        if (currentIndex != -1 && currentIndex < prayerOrder.length - 1) {
+          final nextPrayer = prayerOrder[currentIndex + 1];
+          final nextTimeStr = allPrayerTimes[nextPrayer.toLowerCase()] ?? '';
+          
+          if (nextTimeStr.isNotEmpty && nextTimeStr != 'N/A') {
+            final nextParts = nextTimeStr.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+            final nextHour = int.tryParse(nextParts[0]) ?? 0;
+            final nextMinute = int.tryParse(nextParts.length > 1 ? nextParts[1] : '0') ?? 0;
+            
+            var nextTime = DateTime(scheduledTime.year, scheduledTime.month, scheduledTime.day, nextHour, nextMinute);
+            var currentTime = DateTime(scheduledTime.year, scheduledTime.month, scheduledTime.day, scheduledTime.hour, scheduledTime.minute);
+            
+            // Handle case where next prayer is tomorrow
+            if (nextTime.isBefore(currentTime)) {
+              nextTime = nextTime.add(const Duration(days: 1));
+            }
+            
+            final durationToNext = nextTime.difference(currentTime);
+            timeoutAfterMs = durationToNext.inMilliseconds;
+          }
+        }
+      }
+
       await plugin.zonedSchedule(
         notificationId,
         'Time for $prayerName Prayer',
@@ -114,6 +146,7 @@ class PrayerNotificationScheduler {
             playSound: playSound,
             enableVibration: enableVibration,
             additionalFlags: additionalFlagsForAthan,
+            timeoutAfter: timeoutAfterMs,
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,
@@ -187,6 +220,7 @@ class PrayerNotificationScheduler {
           scheduledTime: scheduledTime,
           notificationState: notificationState,
           athanSoundType: athanSoundType,
+          allPrayerTimes: prayerTimes,
         );
         scheduledCount++;
       } catch (e) {

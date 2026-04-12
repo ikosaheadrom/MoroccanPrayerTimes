@@ -4,6 +4,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.Manifest
+import android.appwidget.AppWidgetManager
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
@@ -60,18 +61,88 @@ class MainActivity : FlutterActivity() {
                         PrayerWidgetProvider.triggerWidgetRefresh(this)
                         result.success(true)
                     }
+                    "updateWidgetCacheFromBackground" -> {
+                        // Called from Dart background task to directly update widget cache and refresh
+                        try {
+                            val arguments = call.arguments as? Map<*, *>
+                            if (arguments != null) {
+                                // Write cache data directly to widget_prefs
+                                val gson = com.google.gson.Gson()
+                                val jsonString = gson.toJson(arguments)
+                                
+                                val widgetPrefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+                                widgetPrefs.edit().apply {
+                                    putString("widget_info_cache", jsonString)
+                                    putLong("widget_last_update_time", System.currentTimeMillis())
+                                    apply()
+                                }
+                                
+                                Log.d("MainActivity", "updateWidgetCacheFromBackground - cache written to widget_prefs")
+                                
+                                // Immediately refresh the widgets
+                                val sendIntent = Intent(this, PrayerWidgetProvider::class.java).apply {
+                                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                }
+                                sendBroadcast(sendIntent)
+                                Log.d("MainActivity", "updateWidgetCacheFromBackground - refresh broadcast sent")
+                                
+                                result.success(true)
+                            } else {
+                                Log.e("MainActivity", "updateWidgetCacheFromBackground - no arguments provided")
+                                result.success(false)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "updateWidgetCacheFromBackground failed: $e")
+                            result.success(false)
+                        }
+                    }
                     "sendWidgetUpdateBroadcast" -> {
                         // This method is no longer used - worker handles widget updates directly
                         result.success(true)
+                    }
+                    "sendWidgetRefreshBroadcast" -> {
+                        // Directly enqueue the widget update worker
+                        // This is more reliable than sending a broadcast to a receiver
+                        // which might not execute immediately
+                        try {
+                            val updateRequest = androidx.work.OneTimeWorkRequestBuilder<WidgetCacheUpdateWorker>()
+                                .build()
+                            androidx.work.WorkManager.getInstance(this).enqueueUniqueWork(
+                                "widget_cache_update_refresh",
+                                androidx.work.ExistingWorkPolicy.REPLACE,
+                                updateRequest
+                            )
+                            Log.d("MainActivity", "sendWidgetRefreshBroadcast - worker enqueued directly")
+                            result.success(true)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to enqueue worker: $e")
+                            result.success(false)
+                        }
                     }
                     "enqueueWidgetUpdateWorker" -> {
                         // Called from background isolate to trigger widget update
                         enqueueWidgetUpdateWorker()
                         result.success(true)
                     }
+                    "enqueueWidgetCacheUpdateWorker" -> {
+                        // Called from Dart background tasks to trigger the cache update worker
+                        enqueueWidgetUpdateWorker()
+                        result.success(true)
+                    }
+                    "triggerWidgetRefreshAlarm" -> {
+                        // Test method: Manually trigger the widget refresh alarm
+                        Log.d("MainActivity", "triggerWidgetRefreshAlarm called - simulating 2 AM refresh")
+                        val intent = Intent(this, WidgetRefreshReceiver::class.java)
+                        intent.action = WidgetRefreshReceiver.ACTION_REFRESH_WIDGET
+                        sendBroadcast(intent)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+        
+        // Schedule the daily 2 AM widget refresh alarm
+        WidgetAlarmScheduler.scheduleWidgetRefreshAlarm(this)
         
         // Set up broadcast receiver for widget cache refresh requests from worker
         setupWidgetRefreshReceiver(flutterEngine)

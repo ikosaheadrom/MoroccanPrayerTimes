@@ -84,7 +84,7 @@ class ResponsiveSizes {
   double get gregorianMonthSize => fontSize(3.2);
 
   /// Weekday font size
-  double get weekdaySize => fontSize(5.2);
+  double get weekdaySize => fontSize(5);
 
   /// Prayer cell name font size (calendar grid)
   double get cellNameSize => fontSize(3.5);

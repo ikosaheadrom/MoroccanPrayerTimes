@@ -296,7 +296,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     /**
      * Update the widget UI with prayer times and highlighting
      */
-    private fun updateAppWidget(
+    fun updateAppWidget(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int
@@ -334,18 +334,15 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             if (cacheJson != null) {
                 try {
                     val gson = Gson()
-                    logDebug("updateAppWidget: DEBUG - Cache JSON before parsing: ${cacheJson.take(300)}")
                     cacheData = gson.fromJson(cacheJson, WidgetCacheData::class.java)
                     
                     // FIX: If bgTransparency is 0 or null, check if it should be from the JSON
-                    // This handles the case where Gson doesn't apply default values for missing fields
                     if (cacheData.bgTransparency <= 0.0) {
                         try {
                             val jsonObj = gson.fromJson(cacheJson, com.google.gson.JsonObject::class.java)
                             val bgTransparencyFromJson = jsonObj.get("bgTransparency")
                             if (bgTransparencyFromJson != null && !bgTransparencyFromJson.isJsonNull) {
-                                logDebug("updateAppWidget: DEBUG - bgTransparency found in JSON: ${bgTransparencyFromJson.asDouble}")
-                                // Re-parse with default Gson to use the correct value
+                                // Re-parse with correct value
                                 cacheData = WidgetCacheData(
                                     fajr = cacheData.fajr,
                                     sunrise = cacheData.sunrise,
@@ -362,8 +359,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                                     cacheTimestampMs = cacheData.cacheTimestampMs
                                 )
                             } else {
-                                logDebug("updateAppWidget: DEBUG - bgTransparency NOT found in JSON, using default 1.0")
-                                // bgTransparency is missing from JSON, ensure we use default 1.0
+                                // bgTransparency is missing from JSON, use default 1.0
                                 cacheData = WidgetCacheData(
                                     fajr = cacheData.fajr,
                                     sunrise = cacheData.sunrise,
@@ -381,13 +377,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                                 )
                             }
                         } catch (parseErr: Exception) {
-                            logDebug("updateAppWidget: DEBUG - Could not parse bgTransparency separately: ${parseErr.message}")
+                            logDebug("updateAppWidget: bgTransparency parse error: ${parseErr.message}")
                         }
                     }
                     
                     logDebug("updateAppWidget: Cache parsed successfully")
-                    logDebug("updateAppWidget: DEBUG - Final bgTransparency value: ${cacheData!!.bgTransparency}")
-                    logDebug("updateAppWidget: DEBUG - All parsed values - hue:${cacheData!!.hue}, isDarkMode:${cacheData!!.isDarkMode}, location:${cacheData!!.location}, bgTransparency:${cacheData!!.bgTransparency}")
                     
                     // Create prayer times map for backward compatibility
                     prayerTimes = mapOf(
@@ -706,9 +700,6 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         
-        val alpha = (color shr 24) and 0xFF
-        logDebug("createRoundedRectBitmap: Creating bitmap with color=${String.format("0x%08X", color)}, alpha=$alpha, width=$width, height=$height")
-        
         val drawable = GradientDrawable()
         drawable.shape = GradientDrawable.RECTANGLE
         drawable.cornerRadius = radiusDp
@@ -717,7 +708,6 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         
-        logDebug("createRoundedRectBitmap: Bitmap created successfully")
         return bitmap
     }
 
@@ -726,10 +716,6 @@ class PrayerWidgetProvider : AppWidgetProvider() {
      * Makes the next prayer prominent by changing text color and adding accent styling
      */
     private fun highlightNextPrayerCard(remoteViews: RemoteViews, nextPrayerName: String, colors: ColorPalette, layoutType: String = LAYOUT_MINIMAL) {
-        logDebug("highlightNextPrayerCard: Highlighting $nextPrayerName for layout type: $layoutType")
-        logDebug("highlightNextPrayerCard: highlightBg = ${String.format("0x%08X", colors.highlightBg)}")
-        logDebug("highlightNextPrayerCard: highlightText = ${String.format("0x%08X", colors.highlightText)}")
-        
         // Map prayer names to card background image IDs and text IDs based on layout type
         val cardMap = when (layoutType) {
             LAYOUT_HORIZONTAL -> mapOf(

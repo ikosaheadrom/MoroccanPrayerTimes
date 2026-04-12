@@ -121,7 +121,7 @@ class PrayerWidgetProviderHorizontal : AppWidgetProvider() {
         }
     }
 
-    private fun updateAppWidget(
+    fun updateAppWidget(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int
